@@ -443,6 +443,128 @@ server <- function(input, output, session) {
     )
   })
   
+  ## Edit the RateIt link ####
+  observeEvent(input$edit_setting, {
+    req(input$edit_setting == 5)
+    
+    config <- config_file()
+    
+    showModal(
+      modalDialog(
+        title = "Update RateIt link",
+        
+        textInput(
+          inputId = "new_rateit_link",
+          label = "RateIt link",
+          value = config$rateit,
+          width = "100%"
+        ),
+        
+        footer = tagList(
+          modalButton("Cancel"),
+          actionButton(
+            inputId = "save_rateit_link",
+            label = "Save",
+            class = "btn-primary"
+          )
+        ),
+        
+        easyClose = FALSE
+      )
+    )
+  })
+  
+  observeEvent(input$save_rateit_link, {
+    req(folder())
+    
+    new_rateit_link <- trimws(input$new_rateit_link)
+    
+    if (!nzchar(new_rateit_link)) {
+      showNotification(
+        "The RateIt link cannot be empty.",
+        type = "error"
+      )
+      return()
+    }
+    
+    config_path <- file.path(
+      folder(),
+      "src",
+      "config",
+      "config.js"
+    )
+    
+    if (!file.exists(config_path)) {
+      showNotification(
+        "No config.js file was found.",
+        type = "error"
+      )
+      return()
+    }
+    
+    config_lines <- readLines(
+      config_path,
+      warn = FALSE,
+      encoding = "UTF-8"
+    )
+    
+    rateit_line <- grep(
+      '^\\s*["\']rateit["\']\\s*:',
+      config_lines
+    )
+    
+    if (length(rateit_line) != 1) {
+      showNotification(
+        'Could not uniquely identify the "rateit" property.',
+        type = "error",
+        duration = NULL
+      )
+      return()
+    }
+    
+    escaped_link <- new_rateit_link |>
+      gsub("\\\\", "\\\\\\\\", x = _) |>
+      gsub('"', '\\\\"', x = _) |>
+      gsub("\r", "\\\\r", x = _) |>
+      gsub("\n", "\\\\n", x = _)
+    
+    existing_indent <- sub(
+      '^(\\s*).*',
+      '\\1',
+      config_lines[rateit_line]
+    )
+    
+    has_comma <- grepl(
+      ',\\s*$',
+      config_lines[rateit_line]
+    )
+    
+    config_lines[rateit_line] <- paste0(
+      existing_indent,
+      '"rateit": "',
+      escaped_link,
+      '"',
+      if (has_comma) "," else ""
+    )
+    
+    writeLines(
+      config_lines,
+      config_path,
+      useBytes = TRUE
+    )
+    
+    config_version(
+      config_version() + 1
+    )
+    
+    removeModal()
+    
+    showNotification(
+      "RateIt link updated.",
+      type = "message"
+    )
+  })
+  
   ### Create, rename, delete and reorder pages ####
   #### Draft object of changes to pages ####
   pages_draft <- reactiveVal(

@@ -29,7 +29,7 @@ page_js_filename <- function(href) {
 set_page_html_module <- function(html_path, js_filename) {
   
   replace_file_text(
-    path = html_path,
+    file_path = html_path,
     pattern = paste0(
       '<script\\s+type\\s*=\\s*["\']module["\']\\s+',
       'src\\s*=\\s*["\']src/[^"\']+\\.js["\']\\s*>',
@@ -52,7 +52,7 @@ set_page_js_title <- function(js_path, page_name) {
   )
   
   replace_file_text(
-    path = js_path,
+    file_path = js_path,
     pattern = 'await\\s+insertHead\\s*\\([^;]*\\)\\s*;',
     replacement = paste0(
       "await insertHead(",
