@@ -9,6 +9,7 @@ library(DT)
 source("R/file_helpers.R", local = TRUE)
 source("R/config_helpers.R", local = TRUE)
 source("R/page_helpers.R", local = TRUE)
+source("R/matrix_helpers.R", local = TRUE)
 
 ui <- fluidPage(
   useShinyjs(),
@@ -1451,6 +1452,50 @@ server <- function(input, output, session) {
   
   matrix_draft <- reactiveVal(character())
   
+  show_matrix_editor <- function() {
+    
+    showModal(
+      modalDialog(
+        title = "Edit Data Portal tables",
+        
+        tags$p(
+          "Data Portal tables are identified by their matrix name. ",
+          tags$a(
+            href = "https://data.nisra.gov.uk/",
+            target = "_blank",
+            rel = "noopener noreferrer",
+            "Browse the NISRA Data Portal"
+          ),
+          " and enter matrix codes below."
+        ),
+        
+        actionButton(
+          "add_matrix",
+          label = NULL,
+          icon = icon("plus"),
+          class = "btn-success",
+          title = "Add Data Portal table"
+        ),
+        
+        tags$div(style = "margin-top: 15px;"),
+        
+        DT::DTOutput("matrix_editor_table"),
+        
+        footer = tagList(
+          modalButton("Cancel"),
+          actionButton(
+            "save_matrices",
+            "Save",
+            class = "btn-primary"
+          )
+        ),
+        
+        size = "l",
+        easyClose = FALSE
+      )
+    )
+  }
+  
   
   observeEvent(input$edit_setting, {
     req(input$edit_setting == 4)
@@ -1482,41 +1527,7 @@ server <- function(input, output, session) {
     
     matrix_draft(matrices)
     
-    showModal(
-      modalDialog(
-        title = "Edit Data Portal tables",
-        
-        tags$p(
-          "Data Portal tables are identified by their matrix name. ",
-          tags$a(
-            href = "https://data.nisra.gov.uk/",
-            target = "_blank",
-            rel = "noopener noreferrer",
-            "Browse the NISRA Data Portal"
-          ),
-          " and enter Matrix codes below."
-        ),
-        
-        actionButton(
-          "add_matrix",
-          label = NULL,
-          icon = icon("plus"),
-          class = "btn-success",
-          title = "Add Data Portal table"
-        ),
-        
-        tags$div(style = "margin-top:15px;"),
-        
-        DT::DTOutput("matrix_editor_table"),
-        
-        footer = tagList(
-          modalButton("Cancel")
-        ),
-        
-        size = "l",
-        easyClose = FALSE
-      )
-    )
+    show_matrix_editor()
   })
   
   
@@ -1607,7 +1618,10 @@ server <- function(input, output, session) {
         ),
         
         footer = tagList(
-          modalButton("Cancel"),
+          actionButton(
+            "cancel_add_matrix",
+            "Cancel"
+          ),
           actionButton(
             "confirm_add_matrix",
             "Add",
@@ -1623,85 +1637,71 @@ server <- function(input, output, session) {
     
   })
   
+  observeEvent(input$cancel_add_matrix, {
+    show_matrix_editor()
+  })
+  
   observeEvent(input$confirm_add_matrix, {
     
-    matrix_name <- trimws(input$new_matrix)
+    matrix_name <- toupper(
+      trimws(input$new_matrix)
+    )
     
     if (!nzchar(matrix_name)) {
-      
       showNotification(
         "Enter a matrix name.",
         type = "error"
       )
-      
       return()
-      
     }
     
     matrices <- matrix_draft()
     
-    if (matrix_name %in% matrices) {
-      
+    if (matrix_name %in% toupper(matrices)) {
       showNotification(
         "That matrix already exists.",
         type = "error"
       )
-      
       return()
-      
+    }
+    
+    notification_id <- showNotification(
+      paste0(
+        "Checking matrix ",
+        matrix_name,
+        "..."
+      ),
+      type = "message",
+      duration = NULL,
+      closeButton = FALSE
+    )
+    
+    verification <- verify_matrix(matrix_name)
+    
+    removeNotification(notification_id)
+    
+    if (!verification$valid) {
+      showNotification(
+        verification$message,
+        type = "error",
+        duration = NULL
+      )
+      return()
     }
     
     matrices <- c(
       matrices,
-      matrix_name
+      verification$matrix
     )
     
     matrix_draft(matrices)
     
-    removeModal()
+    show_matrix_editor()
     
-    ## reopen editor
-    
-    showModal(
-      modalDialog(
-        title = "Edit Data Portal tables",
-        
-        tags$p(
-          "Data Portal tables are identified by their matrix name. ",
-          tags$a(
-            href = "https://data.nisra.gov.uk/",
-            target = "_blank",
-            rel = "noopener noreferrer",
-            "Open the NISRA Data Portal"
-          ),
-          "."
-        ),
-        
-        actionButton(
-          "add_matrix",
-          label = NULL,
-          icon = icon("plus"),
-          class = "btn-success"
-        ),
-        
-        tags$div(style = "margin-top:15px;"),
-        
-        DTOutput("matrix_editor_table"),
-        
-        footer = tagList(
-          modalButton("Cancel"),
-          actionButton(
-            "save_matrices",
-            "Save",
-            class = "btn-primary"
-          )
-        ),
-        
-        size = "l",
-        easyClose = FALSE
-      )
+    showNotification(
+      verification$message,
+      type = "message"
     )
-    
   })
   
   observeEvent(input$delete_matrix, {
