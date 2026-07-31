@@ -249,6 +249,35 @@ server <- function(input, output, session) {
           )
         }
         
+        if (config_name == "matrix") {
+          
+          matrices <- value
+          
+          matrices <- matrices[
+            !matrices %in% c(
+              "EXAMPLETABLE1",
+              "EXAMPLETABLE2"
+            )
+          ]
+          
+          if (length(matrices) == 0) {
+            return(
+              paste0(
+                "<em>",
+                "No Data Portal tables yet.",
+                "</em>"
+              )
+            )
+          }
+          
+          return(
+            paste(
+              matrices,
+              collapse = "<br>"
+            )
+          )
+        }
+        
         format_value(value)
       },
       character(1)
