@@ -1521,19 +1521,24 @@ server <- function(input, output, session) {
   
   
   output$matrix_editor_table <- DT::renderDT({
+    
     matrices <- matrix_draft()
     
     if (length(matrices) == 0) {
+      
       display <- data.frame(
         `Data Portal table` = paste0(
           "<em>",
           "No Data Portal tables yet.",
           "</em>"
         ),
+        Actions = "",
         check.names = FALSE,
         stringsAsFactors = FALSE
       )
+      
     } else {
+      
       display <- data.frame(
         `Data Portal table` = matrices,
         
@@ -1544,6 +1549,7 @@ server <- function(input, output, session) {
             sprintf(
               paste0(
                 '<button class="btn btn-danger btn-sm" ',
+                'title="Delete" ',
                 'onclick="Shiny.setInputValue(',
                 '\'delete_matrix\', %d, ',
                 '{priority:\'event\'})">',
@@ -1567,16 +1573,19 @@ server <- function(input, output, session) {
       escape = FALSE,
       rownames = FALSE,
       selection = "none",
+      
       options = list(
         paging = FALSE,
         searching = FALSE,
         ordering = FALSE,
         info = FALSE,
+        
         columnDefs = list(
           list(
             targets = 1,
             className = "dt-center",
-            width = "80px"
+            width = "80px",
+            searchable = FALSE
           )
         )
       )
@@ -1680,7 +1689,12 @@ server <- function(input, output, session) {
         DTOutput("matrix_editor_table"),
         
         footer = tagList(
-          modalButton("Cancel")
+          modalButton("Cancel"),
+          actionButton(
+            "save_matrices",
+            "Save",
+            class = "btn-primary"
+          )
         ),
         
         size = "l",
@@ -1697,6 +1711,49 @@ server <- function(input, output, session) {
     matrices <- matrices[-input$delete_matrix]
     
     matrix_draft(matrices)
+    
+  })
+  
+  ### Save Matrix ####
+  observeEvent(input$save_matrices, {
+    
+    config_path <- file.path(
+      folder(),
+      "src",
+      "config",
+      "config.js"
+    )
+    
+    config_text <- paste(
+      readLines(
+        config_path,
+        warn = FALSE,
+        encoding = "UTF-8"
+      ),
+      collapse = "\n"
+    )
+    
+    updated_config <- replace_matrix_in_config(
+      config_text,
+      matrix_draft()
+    )
+    
+    writeLines(
+      updated_config,
+      config_path,
+      useBytes = TRUE
+    )
+    
+    config_version(
+      config_version() + 1
+    )
+    
+    removeModal()
+    
+    showNotification(
+      "Data Portal tables saved.",
+      type = "message"
+    )
     
   })
   
