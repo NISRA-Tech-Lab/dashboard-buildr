@@ -1447,6 +1447,102 @@ server <- function(input, output, session) {
     )
   })
   
+  ### Display Data Portal Tables modal ####
+  
+  matrix_draft <- reactiveVal(character())
+  
+  
+  observeEvent(input$edit_setting, {
+    req(input$edit_setting == 4)
+    
+    config <- config_file()
+    
+    matrices <- config$matrix
+    
+    if (is.null(matrices)) {
+      matrices <- character()
+    }
+    
+    matrices <- as.character(
+      unlist(
+        matrices,
+        use.names = FALSE
+      )
+    )
+    
+    matrices <- trimws(matrices)
+    
+    matrices <- matrices[
+      nzchar(matrices) &
+        !matrices %in% c(
+          "EXAMPLETABLE1",
+          "EXAMPLETABLE2"
+        )
+    ]
+    
+    matrix_draft(matrices)
+    
+    showModal(
+      modalDialog(
+        title = "Edit Data Portal tables",
+        
+        tags$p(
+          "Data Portal tables are identified by their matrix name. ",
+          tags$a(
+            href = "https://data.nisra.gov.uk/",
+            target = "_blank",
+            rel = "noopener noreferrer",
+            "Browse the NISRA Data Portal"
+          ),
+          " and enter Matrix codes below."
+        ),
+        
+        DT::DTOutput("matrix_editor_table"),
+        
+        footer = modalButton("Cancel"),
+        
+        size = "l",
+        easyClose = FALSE
+      )
+    )
+  })
+  
+  
+  output$matrix_editor_table <- DT::renderDT({
+    matrices <- matrix_draft()
+    
+    if (length(matrices) == 0) {
+      display <- data.frame(
+        `Data Portal table` = paste0(
+          "<em>",
+          "No Data Portal tables yet.",
+          "</em>"
+        ),
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+    } else {
+      display <- data.frame(
+        `Data Portal table` = matrices,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+    }
+    
+    DT::datatable(
+      display,
+      escape = FALSE,
+      rownames = FALSE,
+      selection = "none",
+      options = list(
+        paging = FALSE,
+        searching = FALSE,
+        ordering = FALSE,
+        info = FALSE
+      )
+    )
+  })
+  
   
 }
 
