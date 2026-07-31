@@ -1744,6 +1744,27 @@ server <- function(input, output, session) {
       useBytes = TRUE
     )
     
+    data_script <- file.path(
+      folder(),
+      "src",
+      "r",
+      "data.R"
+    )
+    
+    if (!file.exists(data_script)) {
+      stop("data.R was not found.")
+    }
+    
+    old_wd <- getwd()
+    on.exit(setwd(old_wd), add = TRUE)
+
+    setwd(folder())
+    
+    source(
+      data_script,
+      local = new.env(parent = globalenv())
+    )
+    
     config_version(
       config_version() + 1
     )
