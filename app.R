@@ -54,6 +54,10 @@ ui <- fluidPage(
           
           h2("Home page design"),
           
+          tags$hr(),
+          
+          h3("Clear content"),
+          
           tags$p(
             paste(
               "Clear the example homepage cards, headings, links",
@@ -66,8 +70,36 @@ ui <- fluidPage(
             label = "Clear content",
             icon = icon("eraser"),
             class = "btn-danger"
+          ),
+          
+          tags$hr(),
+          
+          h3("Edit strapline"),
+          
+          tags$p(
+            paste(
+              "Enter a short line describing the source of the dashboard data,",
+              "for example: This dashboard was built using data from the NISRA Data Portal."
+            )
+          ),
+          
+          textInput(
+            inputId = "homepage_strapline",
+            label = "Homepage strapline",
+            value = "",
+            width = "100%",
+            placeholder = "This dashboard was built using data from..."
+          ),
+          
+          actionButton(
+            inputId = "save_homepage_strapline",
+            label = "Save strapline",
+            icon = icon("save"),
+            class = "btn-primary"
           )
-        )
+        ),
+        tabPanel("Page design"),
+        tabPanel("User notes")
       )
     )
   )
@@ -2441,6 +2473,49 @@ server <- function(input, output, session) {
     showNotification(
       "Homepage content cleared.",
       type = "message"
+    )
+  })
+  
+  ## Edit strapline ####
+  observeEvent(input$save_homepage_strapline, {
+    
+    req(folder())
+    
+    strapline <- trimws(
+      input$homepage_strapline
+    )
+    
+    if (!nzchar(strapline)) {
+      showNotification(
+        "Enter a homepage strapline.",
+        type = "error"
+      )
+      
+      return()
+    }
+    
+    tryCatch(
+      {
+        update_homepage_strapline(
+          project_root = folder(),
+          strapline = strapline
+        )
+        
+        showNotification(
+          "Homepage strapline updated.",
+          type = "message"
+        )
+      },
+      error = function(error) {
+        showNotification(
+          paste(
+            "Homepage strapline could not be updated:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+      }
     )
   })
   

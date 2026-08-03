@@ -383,3 +383,144 @@ clear_homepage_files <- function(project_root) {
     )
   )
 }
+
+update_homepage_strapline <- function(
+    project_root,
+    strapline
+) {
+  index_html_path <- file.path(
+    project_root,
+    "index.html"
+  )
+  
+  if (!file.exists(index_html_path)) {
+    stop("index.html was not found.")
+  }
+  
+  strapline <- trimws(strapline)
+  
+  if (!nzchar(strapline)) {
+    stop("The homepage strapline cannot be empty.")
+  }
+  
+  html_lines <- readLines(
+    index_html_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  current_page_line <- grep(
+    'class=["\'][^"\']*current-page[^"\']*["\']',
+    html_lines,
+    perl = TRUE
+  )
+  
+  if (length(current_page_line) != 1) {
+    stop(
+      "Could not uniquely identify the .current-page element."
+    )
+  }
+  
+  start_line <- current_page_line[[1]]
+  
+  count_open_divs <- function(line) {
+    matches <- gregexpr(
+      "<div\\b",
+      line,
+      perl = TRUE
+    )[[1]]
+    
+    if (matches[[1]] == -1) {
+      return(0L)
+    }
+    
+    length(matches)
+  }
+  
+  count_close_divs <- function(line) {
+    matches <- gregexpr(
+      "</div\\s*>",
+      line,
+      perl = TRUE
+    )[[1]]
+    
+    if (matches[[1]] == -1) {
+      return(0L)
+    }
+    
+    length(matches)
+  }
+  
+  find_closing_div <- function(lines, start) {
+    depth <- 0L
+    
+    for (i in seq.int(start, length(lines))) {
+      depth <- depth +
+        count_open_divs(lines[[i]]) -
+        count_close_divs(lines[[i]])
+      
+      if (depth == 0L) {
+        return(i)
+      }
+    }
+    
+    stop(
+      "Could not find the closing </div> for .current-page."
+    )
+  }
+  
+  end_line <- find_closing_div(
+    html_lines,
+    start_line
+  )
+  
+  escaped_strapline <- as.character(
+    htmltools::htmlEscape(
+      strapline,
+      attribute = FALSE
+    )
+  )
+  
+  opening_tag <- sub(
+    "^(.*?<div\\b[^>]*>).*",
+    "\\1",
+    html_lines[[start_line]],
+    perl = TRUE
+  )
+  
+  closing_indent <- sub(
+    "^(\\s*).*",
+    "\\1",
+    html_lines[[start_line]]
+  )
+  
+  replacement_line <- paste0(
+    opening_tag,
+    escaped_strapline,
+    "</div>"
+  )
+  
+  updated_lines <- c(
+    if (start_line > 1) {
+      html_lines[seq_len(start_line - 1)]
+    } else {
+      character()
+    },
+    
+    replacement_line,
+    
+    if (end_line < length(html_lines)) {
+      html_lines[seq.int(end_line + 1, length(html_lines))]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_lines,
+    index_html_path,
+    useBytes = TRUE
+  )
+  
+  invisible(index_html_path)
+}
