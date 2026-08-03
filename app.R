@@ -11,6 +11,7 @@ source("R/file_helpers.R", local = TRUE)
 source("R/config_helpers.R", local = TRUE)
 source("R/page_helpers.R", local = TRUE)
 source("R/matrix_helpers.R", local = TRUE)
+source("R/homepage_helpers.R", local = TRUE)
 
 ui <- fluidPage(
   theme = shinytheme("cosmo"),
@@ -48,7 +49,25 @@ ui <- fluidPage(
         tabPanel("Dashboard settings",
                  h2("Dashboard settings"),
                  DT::dataTableOutput("config_table")),
-        tabPanel("Home page design")
+        tabPanel(
+          "Home page design",
+          
+          h2("Home page design"),
+          
+          tags$p(
+            paste(
+              "Clear the example homepage cards, headings, links",
+              "and example JavaScript values."
+            )
+          ),
+          
+          actionButton(
+            inputId = "clear_homepage_content",
+            label = "Clear content",
+            icon = icon("eraser"),
+            class = "btn-danger"
+          )
+        )
       )
     )
   )
@@ -2337,6 +2356,92 @@ server <- function(input, output, session) {
       type = "message"
     )
     
+  })
+  
+  # Home page design tab ####
+  
+  ## Clear home page content button ####
+  observeEvent(input$clear_homepage_content, {
+    
+    req(folder())
+    
+    showModal(
+      modalDialog(
+        title = "Clear homepage content?",
+        
+        tags$p(
+          paste(
+            "This will remove the example content from index.html",
+            "and the example value-insertion code from src/index.js."
+          )
+        ),
+        
+        tags$p(
+          tags$strong(
+            "The dashboard layout, information heading and SVG icon will remain."
+          )
+        ),
+        
+        footer = tagList(
+          modalButton("Cancel"),
+          
+          actionButton(
+            inputId = "confirm_clear_homepage_content",
+            label = "Clear content",
+            icon = icon("eraser"),
+            class = "btn-danger"
+          )
+        ),
+        
+        easyClose = FALSE
+      )
+    )
+  })
+  
+  observeEvent(input$confirm_clear_homepage_content, {
+    
+    req(folder())
+    
+    notification_id <- showNotification(
+      "Clearing homepage content...",
+      type = "message",
+      duration = NULL,
+      closeButton = FALSE
+    )
+    
+    result <- tryCatch(
+      {
+        clear_homepage_files(
+          project_root = folder()
+        )
+      },
+      error = function(error) {
+        removeNotification(notification_id)
+        
+        showNotification(
+          paste(
+            "Homepage content could not be cleared:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+        
+        NULL
+      }
+    )
+    
+    if (is.null(result)) {
+      return()
+    }
+    
+    removeNotification(notification_id)
+    removeModal()
+    
+    showNotification(
+      "Homepage content cleared.",
+      type = "message"
+    )
   })
   
   
