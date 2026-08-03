@@ -5,6 +5,7 @@ library(shinyjs)
 library(dplyr)
 library(V8)
 library(DT)
+library(shinythemes)
 
 source("R/file_helpers.R", local = TRUE)
 source("R/config_helpers.R", local = TRUE)
@@ -12,6 +13,7 @@ source("R/page_helpers.R", local = TRUE)
 source("R/matrix_helpers.R", local = TRUE)
 
 ui <- fluidPage(
+  theme = shinytheme("cosmo"),
   useShinyjs(),
   titlePanel("NISRA Dashboard BuildR"),
   
@@ -24,13 +26,21 @@ ui <- fluidPage(
         title = "Choose a folder"
       ),
       hidden(
-        div(id = "launch-controls",
-            h4("Dashboard location"),
-            verbatimTextOutput("path"),
-            p("Click below to open dashboard in new tab"),
-            actionButton("launch-dashboard", "Launch dashboard")
+        div(
+          id = "launch-controls",
+          h4("Dashboard location"),
+          verbatimTextOutput("path"),
+          p("Click below to open dashboard in new tab"),
+          actionButton(
+            "launch-dashboard",
+            "Launch dashboard"
+          ),
+          uiOutput("github_origin")
         )
-      )
+      ),
+      tags$hr(),
+      
+      uiOutput("loaded_tables_ui")
     ),
     
     mainPanel(
@@ -73,6 +83,99 @@ server <- function(input, output, session) {
     )
   })
   
+  github_origin <- reactive({
+    req(folder())
+    
+    result <- tryCatch(
+      system2(
+        command = "git",
+        args = c(
+          "-C",
+          shQuote(folder()),
+          "remote",
+          "get-url",
+          "origin"
+        ),
+        stdout = TRUE,
+        stderr = TRUE
+      ),
+      error = function(error) {
+        character()
+      }
+    )
+    
+    status <- attr(result, "status")
+    
+    if (
+      length(result) == 0 ||
+      (!is.null(status) && status != 0)
+    ) {
+      return(NULL)
+    }
+    
+    remote_url <- trimws(result[1])
+    
+    if (!nzchar(remote_url)) {
+      return(NULL)
+    }
+    
+    # Convert GitHub SSH remotes:
+    # git@github.com:organisation/repository.git
+    # into:
+    # https://github.com/organisation/repository
+    if (grepl("^git@github\\.com:", remote_url)) {
+      remote_url <- sub(
+        "^git@github\\.com:",
+        "https://github.com/",
+        remote_url
+      )
+    }
+    
+    # Convert ssh://git@github.com/organisation/repository.git
+    if (grepl("^ssh://git@github\\.com/", remote_url)) {
+      remote_url <- sub(
+        "^ssh://git@github\\.com/",
+        "https://github.com/",
+        remote_url
+      )
+    }
+    
+    remote_url <- sub(
+      "\\.git$",
+      "",
+      remote_url
+    )
+    
+    remote_url
+  })
+  
+  output$github_origin <- renderUI({
+    origin <- github_origin()
+    
+    tags$div(
+      style = "margin-top: 12px; margin-bottom: 12px;",
+      
+      tags$strong("GitHub repository"),
+      
+      tags$br(),
+      
+      if (is.null(origin)) {
+        tags$em(
+          "No Git origin was found."
+        )
+      } else if (grepl("^https?://github\\.com/", origin)) {
+        tags$a(
+          href = origin,
+          target = "_blank",
+          rel = "noopener noreferrer",
+          sub("^https?://", "", origin)
+        )
+      } else {
+        tags$span(origin)
+      }
+    )
+  })
+  
   output$path <- renderText({
     folder()
   })
@@ -98,6 +201,338 @@ server <- function(input, output, session) {
     )
     
     browseURL(sprintf("http://127.0.0.1:%d", port))
+  })
+  
+  # Loaded tables ####
+  # Loaded data tables ####
+  
+  loaded_tables_version <- reactiveVal(0)
+  
+  selected_loaded_table <- reactiveVal(NULL)
+  
+  
+  loaded_table_files <- reactive({
+    req(folder())
+    
+    # Allows this list to be refreshed after data.R runs.
+    loaded_tables_version()
+    
+    data_directory <- file.path(
+      folder(),
+      "public",
+      "data"
+    )
+    
+    if (!dir.exists(data_directory)) {
+      return(character())
+    }
+    
+    files <- list.files(
+      path = data_directory,
+      pattern = "\\.csv$",
+      full.names = TRUE,
+      ignore.case = TRUE
+    )
+    
+    sort(files)
+  })
+  
+  
+  loaded_table_metadata <- reactive({
+    req(folder())
+    
+    loaded_tables_version()
+    
+    metadata_path <- file.path(
+      folder(),
+      "public",
+      "data",
+      "data.json"
+    )
+    
+    if (!file.exists(metadata_path)) {
+      return(list())
+    }
+    
+    tryCatch(
+      jsonlite::fromJSON(
+        txt = metadata_path,
+        simplifyVector = FALSE
+      ),
+      error = function(error) {
+        showNotification(
+          paste(
+            "Could not read public/data/data.json:",
+            error$message
+          ),
+          type = "error",
+          duration = NULL
+        )
+        
+        list()
+      }
+    )
+  })
+  
+  
+  output$loaded_tables_ui <- renderUI({
+    
+    files <- loaded_table_files()
+    metadata <- loaded_table_metadata()
+    
+    tagList(
+      h4("Tables loaded"),
+      
+      if (length(files) == 0) {
+        
+        tags$em(
+          "No tables have been loaded yet."
+        )
+        
+      } else {
+        
+        tags$div(
+          class = "loaded-tables-list",
+          
+          lapply(files, function(file_path) {
+            
+            matrix <- tools::file_path_sans_ext(
+              basename(file_path)
+            )
+            
+            table_metadata <- metadata[[matrix]]
+            
+            table_label <- if (
+              !is.null(table_metadata) &&
+              !is.null(table_metadata$label) &&
+              length(table_metadata$label) > 0 &&
+              nzchar(as.character(table_metadata$label)[1])
+            ) {
+              as.character(table_metadata$label)[1]
+            } else {
+              matrix
+            }
+            
+            display_name <- paste0(
+              table_label,
+              " (",
+              matrix,
+              ")"
+            )
+            
+            tags$div(
+              style = paste(
+                "display: flex;",
+                "align-items: center;",
+                "justify-content: space-between;",
+                "gap: 10px;",
+                "margin-bottom: 8px;"
+              ),
+              
+              tags$span(
+                display_name,
+                title = display_name,
+                style = paste(
+                  "overflow-wrap: anywhere;",
+                  "line-height: 1.25;",
+                  "flex: 1;",
+                  "min-width: 0;"
+                )
+              ),
+              
+              tags$button(
+                type = "button",
+                class = "btn btn-default btn-sm",
+                title = paste0(
+                  "View ",
+                  matrix
+                ),
+                style = "flex-shrink: 0;",
+                
+                onclick = sprintf(
+                  paste0(
+                    "Shiny.setInputValue(",
+                    "'view_loaded_table', ",
+                    "{matrix: %s, nonce: Math.random()}, ",
+                    "{priority: 'event'}",
+                    ");"
+                  ),
+                  jsonlite::toJSON(
+                    matrix,
+                    auto_unbox = TRUE
+                  )
+                ),
+                
+                icon("eye"),
+                " View"
+              )
+            )
+          })
+        )
+      }
+    )
+  })
+  
+  
+  observeEvent(input$view_loaded_table, {
+    req(input$view_loaded_table$matrix)
+    
+    matrix <- as.character(
+      input$view_loaded_table$matrix
+    )
+    
+    available_matrices <- tools::file_path_sans_ext(
+      basename(loaded_table_files())
+    )
+    
+    if (!matrix %in% available_matrices) {
+      showNotification(
+        "The selected table could not be found.",
+        type = "error"
+      )
+      
+      return()
+    }
+    
+    selected_loaded_table(matrix)
+    
+    metadata <- loaded_table_metadata()
+    table_metadata <- metadata[[matrix]]
+    
+    table_label <- if (
+      !is.null(table_metadata) &&
+      !is.null(table_metadata$label) &&
+      length(table_metadata$label) > 0 &&
+      nzchar(as.character(table_metadata$label)[1])
+    ) {
+      as.character(table_metadata$label)[1]
+    } else {
+      "Data table"
+    }
+    
+    modal_title <- paste0(
+      matrix,
+      " - ",
+      table_label
+    )
+    
+    showModal(
+      modalDialog(
+        title = modal_title,
+        
+        tags$div(
+          style = paste(
+            "width: 100%;",
+            "overflow: hidden;"
+          ),
+          
+          DT::DTOutput("loaded_table_view")
+        ),
+        
+        tags$div(
+          style = paste(
+            "margin-top: 12px;",
+            "font-size: 0.9em;"
+          ),
+          
+          uiOutput("loaded_table_updated")
+        ),
+        
+        footer = modalButton("Close"),
+        
+        size = "l",
+        easyClose = TRUE
+      )
+    )
+  })
+  
+  
+  output$loaded_table_view <- DT::renderDT({
+    matrix <- selected_loaded_table()
+    
+    req(matrix)
+    req(folder())
+    
+    csv_path <- file.path(
+      folder(),
+      "public",
+      "data",
+      paste0(matrix, ".csv")
+    )
+    
+    validate(
+      need(
+        file.exists(csv_path),
+        paste0(
+          "The CSV file could not be found: ",
+          basename(csv_path)
+        )
+      )
+    )
+    
+    table_data <- read.csv(
+      csv_path,
+      check.names = FALSE,
+      stringsAsFactors = FALSE,
+      encoding = "UTF-8"
+    )
+    
+    DT::datatable(
+      table_data,
+      rownames = FALSE,
+      selection = "none",
+      filter = "none",
+      class = "cell-border compact stripe",
+      options = list(
+        paging = FALSE,
+        searching = FALSE,
+        ordering = TRUE,
+        info = FALSE,
+        scrollX = TRUE,
+        scrollY = "60vh",
+        scrollCollapse = TRUE,
+        autoWidth = TRUE
+      )
+    )
+  })
+  
+  
+  output$loaded_table_updated <- renderUI({
+    matrix <- selected_loaded_table()
+    
+    req(matrix)
+    
+    metadata <- loaded_table_metadata()
+    table_metadata <- metadata[[matrix]]
+    
+    updated_value <- if (
+      !is.null(table_metadata) &&
+      !is.null(table_metadata$updated) &&
+      length(table_metadata$updated) > 0
+    ) {
+      as.character(table_metadata$updated)[1]
+    } else {
+      NA_character_
+    }
+    
+    updated_date <- suppressWarnings(
+      as.Date(updated_value)
+    )
+    
+    if (is.na(updated_date)) {
+      tags$span(
+        tags$strong("Updated: "),
+        "Date unavailable"
+      )
+    } else {
+      tags$span(
+        tags$strong("Updated: "),
+        format(
+          updated_date,
+          "%d/%m/%Y"
+        )
+      )
+    }
   })
   
   # Dashboard settings tab ####
@@ -1885,6 +2320,10 @@ server <- function(input, output, session) {
     source(
       data_script,
       local = new.env(parent = globalenv())
+    )
+    
+    loaded_tables_version(
+      loaded_tables_version() + 1
     )
     
     config_version(
