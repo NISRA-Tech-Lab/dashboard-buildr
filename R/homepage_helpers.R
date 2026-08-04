@@ -1695,7 +1695,10 @@ update_homepage_card_value_js <- function(
     "_data"
   )
   
-  metadata_variable <- matrix
+  metadata_variable <- paste0(
+    matrix,
+    "_meta"
+  )
   
   raw_variable <- paste0(
     "headline_",
@@ -1724,11 +1727,13 @@ update_homepage_card_value_js <- function(
       escape_javascript_string(matrix),
       '");'
     ),
-    paste0(
-      "    updateYearSpans(",
-      data_variable,
-      ");"
-    ),
+    if (card_number == 1) {
+      paste0(
+        "    updateYearSpans(",
+        data_variable,
+        ");"
+      )
+    },
     ""
   )
   
