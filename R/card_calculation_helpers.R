@@ -150,10 +150,41 @@ read_card_calculation_data <- function(
       next
     }
     
+    variable_code <- as.character(
+      variable$code
+    )[1]
+    
+    is_year_variable <- grepl(
+      "^TLIST\\((A1|Q1|M1|W1)\\)$",
+      variable_code
+    )
+    
+    filter_choices <- distinct_values
+    
+    if (is_year_variable) {
+      special_year_choices <- c(
+        "Latest year" = "__LATEST_YEAR__",
+        "Previous year" = "__PREVIOUS_YEAR__",
+        "Earliest year" = "__EARLIEST_YEAR__"
+      )
+      
+      ordinary_year_choices <- stats::setNames(
+        distinct_values,
+        distinct_values
+      )
+      
+      filter_choices <- c(
+        special_year_choices,
+        ordinary_year_choices
+      )
+    }
+    
     row_filters[[length(row_filters) + 1]] <- list(
       column = column_name,
       label = column_name,
-      choices = distinct_values,
+      code = variable_code,
+      is_year = is_year_variable,
+      choices = filter_choices,
       input_id = paste0(
         "calculation_filter_",
         length(row_filters) + 1
@@ -176,11 +207,9 @@ filter_card_calculation_data <- function(
     calculation_data,
     selections
 ) {
-  
   filtered_data <- calculation_data$data
   
   for (filter_definition in calculation_data$row_filters) {
-    
     selected_values <- selections[[
       filter_definition$input_id
     ]]
@@ -193,14 +222,25 @@ filter_card_calculation_data <- function(
       selected_values
     )
     
-    # No selection means this variable is not filtered.
+    # Empty selection means this variable is not filtered.
     if (length(selected_values) == 0) {
       next
     }
     
+    if (isTRUE(filter_definition$is_year)) {
+      selected_values <- resolve_year_filter_values(
+        column_values = filtered_data[[
+          filter_definition$column
+        ]],
+        selected_values = selected_values
+      )
+    }
+    
     filtered_data <- filtered_data[
       as.character(
-        filtered_data[[filter_definition$column]]
+        filtered_data[[
+          filter_definition$column
+        ]]
       ) %in% selected_values,
       ,
       drop = FALSE
@@ -315,4 +355,100 @@ format_card_calculation_value <- function(
       ""
     }
   )
+}
+
+resolve_year_filter_values <- function(
+    column_values,
+    selected_values
+) {
+  selected_values <- as.character(
+    selected_values
+  )
+  
+  special_tokens <- c(
+    "__LATEST_YEAR__",
+    "__PREVIOUS_YEAR__",
+    "__EARLIEST_YEAR__"
+  )
+  
+  if (!any(selected_values %in% special_tokens)) {
+    return(selected_values)
+  }
+  
+  available_values <- unique(
+    as.character(column_values)
+  )
+  
+  available_values <- available_values[
+    !is.na(available_values) &
+      nzchar(trimws(available_values))
+  ]
+  
+  if (length(available_values) == 0) {
+    return(
+      setdiff(
+        selected_values,
+        special_tokens
+      )
+    )
+  }
+  
+  numeric_years <- suppressWarnings(
+    as.numeric(available_values)
+  )
+  
+  if (all(!is.na(numeric_years))) {
+    ordered_values <- available_values[
+      order(
+        numeric_years,
+        decreasing = FALSE
+      )
+    ]
+  } else {
+    ordered_values <- sort(
+      available_values,
+      decreasing = FALSE
+    )
+  }
+  
+  earliest_year <- ordered_values[1]
+  latest_year <- ordered_values[
+    length(ordered_values)
+  ]
+  
+  previous_year <- if (length(ordered_values) >= 2) {
+    ordered_values[
+      length(ordered_values) - 1
+    ]
+  } else {
+    latest_year
+  }
+  
+  resolved_values <- setdiff(
+    selected_values,
+    special_tokens
+  )
+  
+  if ("__LATEST_YEAR__" %in% selected_values) {
+    resolved_values <- c(
+      resolved_values,
+      latest_year
+    )
+  }
+  
+  if ("__PREVIOUS_YEAR__" %in% selected_values) {
+    resolved_values <- c(
+      resolved_values,
+      previous_year
+    )
+  }
+  
+  if ("__EARLIEST_YEAR__" %in% selected_values) {
+    resolved_values <- c(
+      resolved_values,
+      earliest_year
+    )
+  }
+  
+  unique(resolved_values)
 }

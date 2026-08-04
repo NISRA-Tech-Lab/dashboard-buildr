@@ -3678,8 +3678,13 @@ server <- function(input, output, session) {
         ) {
           js_filters[[
             filter_definition$column
-          ]] <- as.character(
-            selected_values
+          ]] <- list(
+            values = as.character(
+              selected_values
+            ),
+            is_year = isTRUE(
+              filter_definition$is_year
+            )
           )
         }
       }

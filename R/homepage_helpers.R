@@ -1545,6 +1545,29 @@ javascript_string <- function(value) {
   )
 }
 
+javascript_filter_value <- function(
+    value,
+    is_year = FALSE
+) {
+  value <- as.character(value)[1]
+  
+  if (isTRUE(is_year)) {
+    if (identical(value, "__LATEST_YEAR__")) {
+      return("latest_year")
+    }
+    
+    if (identical(value, "__PREVIOUS_YEAR__")) {
+      return("last_year")
+    }
+    
+    if (identical(value, "__EARLIEST_YEAR__")) {
+      return("first_year")
+    }
+  }
+  
+  javascript_string(value)
+}
+
 update_homepage_card_value_js <- function(
     project_root,
     card_number,
@@ -1716,34 +1739,51 @@ update_homepage_card_value_js <- function(
     filter_conditions <- character()
     
     for (column_name in names(js_filters)) {
+      filter_definition <- js_filters[[
+        column_name
+      ]]
       
-      selected_values <- as.character(
-        js_filters[[column_name]]
+      # Supports both the new structured format and older saved values.
+      if (
+        is.list(filter_definition) &&
+        !is.null(filter_definition$values)
+      ) {
+        selected_values <- as.character(
+          filter_definition$values
+        )
+        
+        is_year_filter <- isTRUE(
+          filter_definition$is_year
+        )
+      } else {
+        selected_values <- as.character(
+          filter_definition
+        )
+        
+        is_year_filter <- FALSE
+      }
+      
+      js_values <- vapply(
+        selected_values,
+        javascript_filter_value,
+        character(1),
+        is_year = is_year_filter
       )
       
-      if (length(selected_values) == 1) {
-        
+      if (length(js_values) == 1) {
         condition <- paste0(
-          'row[',
+          "row[",
           javascript_string(column_name),
           "] == ",
-          javascript_string(selected_values)
+          js_values[1]
         )
-        
       } else {
-        
-        js_values <- paste(
-          vapply(
-            selected_values,
-            javascript_string,
-            character(1)
-          ),
-          collapse = ", "
-        )
-        
         condition <- paste0(
           "[",
-          js_values,
+          paste(
+            js_values,
+            collapse = ", "
+          ),
           "].includes(row[",
           javascript_string(column_name),
           "])"
@@ -1780,7 +1820,18 @@ update_homepage_card_value_js <- function(
   single_row <- all(
     vapply(
       js_filters,
-      length,
+      function(filter_definition) {
+        
+        if (
+          is.list(filter_definition) &&
+          !is.null(filter_definition$values)
+        ) {
+          length(filter_definition$values)
+        } else {
+          length(filter_definition)
+        }
+        
+      },
       integer(1)
     ) == 1L
   )
