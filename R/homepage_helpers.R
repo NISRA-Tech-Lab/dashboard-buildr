@@ -1301,3 +1301,353 @@ update_homepage_card_link <- function(
   
   invisible(index_html_path)
 }
+
+update_homepage_card_body <- function(
+    project_root,
+    card_number,
+    top_line = "",
+    unit = "",
+    bottom_line = ""
+) {
+  index_html_path <- file.path(
+    project_root,
+    "index.html"
+  )
+  
+  if (!file.exists(index_html_path)) {
+    stop("index.html was not found.")
+  }
+  
+  card_number <- as.integer(card_number)
+  
+  if (
+    length(card_number) != 1 ||
+    is.na(card_number) ||
+    card_number < 1
+  ) {
+    stop("A valid card number is required.")
+  }
+  
+  html_lines <- readLines(
+    index_html_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  card_section <- find_homepage_cards_row(
+    html_lines
+  )
+  
+  if (card_number > length(card_section$card_starts)) {
+    stop(
+      paste0(
+        "Card ",
+        card_number,
+        " was not found."
+      )
+    )
+  }
+  
+  card_start <- card_section$card_starts[card_number]
+  
+  card_end <- find_closing_div(
+    html_lines,
+    card_start
+  )
+  
+  body_candidates <- grep(
+    'class=["\'][^"\']*\\bcard-body\\b',
+    html_lines,
+    perl = TRUE
+  )
+  
+  body_candidates <- body_candidates[
+    body_candidates >= card_start &
+      body_candidates <= card_end
+  ]
+  
+  if (length(body_candidates) != 1) {
+    stop(
+      paste0(
+        "Could not uniquely identify the body for card ",
+        card_number,
+        "."
+      )
+    )
+  }
+  
+  body_start <- body_candidates[1]
+  
+  body_end <- find_closing_div(
+    html_lines,
+    body_start
+  )
+  
+  top_line <- trimws(top_line)
+  unit <- trimws(unit)
+  bottom_line <- trimws(bottom_line)
+  
+  escaped_top_line <- as.character(
+    htmltools::htmlEscape(
+      top_line,
+      attribute = FALSE
+    )
+  )
+  
+  escaped_unit <- as.character(
+    htmltools::htmlEscape(
+      unit,
+      attribute = FALSE
+    )
+  )
+  
+  escaped_bottom_line <- as.character(
+    htmltools::htmlEscape(
+      bottom_line,
+      attribute = FALSE
+    )
+  )
+  
+  opening_line <- sub(
+    "^(.*?<div\\b[^>]*>).*",
+    "\\1",
+    html_lines[body_start],
+    perl = TRUE
+  )
+  
+  body_indent <- sub(
+    "^(\\s*).*",
+    "\\1",
+    html_lines[body_start]
+  )
+  
+  content_indent <- paste0(
+    body_indent,
+    "    "
+  )
+  
+  value_span <- paste0(
+    '<span class="display-4" id="headline-',
+    card_number,
+    '-value"></span>'
+  )
+  
+  unit_span <- if (nzchar(unit)) {
+    paste0(
+      '<span class="display-4 unit">',
+      escaped_unit,
+      "</span>"
+    )
+  } else {
+    ""
+  }
+  
+  body_content <- c(
+    paste0(
+      content_indent,
+      "<p>",
+      escaped_top_line
+    ),
+    paste0(
+      content_indent,
+      "    <br>",
+      value_span,
+      unit_span
+    ),
+    paste0(
+      content_indent,
+      "    <br>",
+      escaped_bottom_line
+    ),
+    paste0(
+      content_indent,
+      "</p>"
+    )
+  )
+  
+  replacement <- c(
+    opening_line,
+    body_content,
+    paste0(
+      body_indent,
+      "</div>"
+    )
+  )
+  
+  updated_html <- c(
+    if (body_start > 1) {
+      html_lines[seq_len(body_start - 1)]
+    } else {
+      character()
+    },
+    
+    replacement,
+    
+    if (body_end < length(html_lines)) {
+      html_lines[
+        seq.int(
+          body_end + 1,
+          length(html_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_html,
+    index_html_path,
+    useBytes = TRUE
+  )
+  
+  invisible(index_html_path)
+}
+
+update_homepage_card_value_js <- function(
+    project_root,
+    card_number,
+    value
+) {
+  js_path <- file.path(
+    project_root,
+    "src",
+    "index.js"
+  )
+  
+  if (!file.exists(js_path)) {
+    stop("src/index.js was not found.")
+  }
+  
+  card_number <- as.integer(card_number)
+  
+  if (
+    length(card_number) != 1 ||
+    is.na(card_number) ||
+    card_number < 1
+  ) {
+    stop("A valid card number is required.")
+  }
+  
+  value <- trimws(as.character(value))
+  
+  if (!nzchar(value)) {
+    stop("A card value is required.")
+  }
+  
+  js_lines <- readLines(
+    js_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  current_marker_pattern <- paste0(
+    "^\\s*//\\s*Content for card\\s+",
+    card_number,
+    "\\s*$"
+  )
+  
+  current_marker <- grep(
+    current_marker_pattern,
+    js_lines,
+    perl = TRUE
+  )
+  
+  if (length(current_marker) != 1) {
+    stop(
+      paste0(
+        "Could not identify the JavaScript section for card ",
+        card_number,
+        "."
+      )
+    )
+  }
+  
+  next_markers <- grep(
+    "^\\s*//\\s*Content for card\\s+[0-9]+\\s*$",
+    js_lines,
+    perl = TRUE
+  )
+  
+  next_markers <- next_markers[
+    next_markers > current_marker
+  ]
+  
+  closing_lines <- grep(
+    "^\\s*\\}\\)\\s*;?\\s*$",
+    js_lines
+  )
+  
+  if (length(closing_lines) == 0) {
+    stop(
+      "Could not identify the end of the event listener."
+    )
+  }
+  
+  section_end <- if (length(next_markers) > 0) {
+    min(next_markers) - 1
+  } else {
+    tail(closing_lines, 1) - 1
+  }
+  
+  variable_name <- paste0(
+    "headline_",
+    card_number
+  )
+  
+  element_id <- paste0(
+    "headline-",
+    card_number,
+    "-value"
+  )
+  
+  replacement <- c(
+    js_lines[current_marker],
+    "",
+    paste0(
+      "    const ",
+      variable_name,
+      " = ",
+      value,
+      ";"
+    ),
+    paste0(
+      '    insertValue("',
+      element_id,
+      '", ',
+      variable_name,
+      ");"
+    ),
+    "",
+    ""
+  )
+  
+  updated_js <- c(
+    if (current_marker > 1) {
+      js_lines[seq_len(current_marker - 1)]
+    } else {
+      character()
+    },
+    
+    replacement,
+    
+    if (section_end < length(js_lines)) {
+      js_lines[
+        seq.int(
+          section_end + 1,
+          length(js_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_js,
+    js_path,
+    useBytes = TRUE
+  )
+  
+  invisible(js_path)
+}

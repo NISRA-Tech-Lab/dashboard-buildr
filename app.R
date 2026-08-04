@@ -3005,6 +3005,38 @@ server <- function(input, output, session) {
               selected_href
             )
             
+            top_line <- input[[
+              paste0(
+                "card_",
+                current_card,
+                "_top_line"
+              )
+            ]]
+            
+            card_value <- input[[
+              paste0(
+                "card_",
+                current_card,
+                "_value"
+              )
+            ]]
+            
+            unit <- input[[
+              paste0(
+                "card_",
+                current_card,
+                "_unit"
+              )
+            ]]
+            
+            bottom_line <- input[[
+              paste0(
+                "card_",
+                current_card,
+                "_bottom_line"
+              )
+            ]]
+            
             config <- config_file()
             navigation <- config$navigation
             
@@ -3032,6 +3064,20 @@ server <- function(input, output, session) {
             
             tryCatch(
               {
+                update_homepage_card_body(
+                  project_root = folder(),
+                  card_number = current_card,
+                  top_line = top_line,
+                  unit = unit,
+                  bottom_line = bottom_line
+                )
+                
+                update_homepage_card_value_js(
+                  project_root = folder(),
+                  card_number = current_card,
+                  value = card_value
+                )
+                
                 update_homepage_card_link(
                   project_root = folder(),
                   card_number = current_card,
