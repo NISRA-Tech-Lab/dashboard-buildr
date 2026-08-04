@@ -524,3 +524,356 @@ update_homepage_strapline <- function(
   
   invisible(index_html_path)
 }
+
+count_open_divs <- function(line) {
+  
+  matches <- gregexpr(
+    "<div\\b",
+    line,
+    perl = TRUE
+  )[[1]]
+  
+  if (matches[1] == -1) {
+    return(0L)
+  }
+  
+  length(matches)
+}
+
+
+count_close_divs <- function(line) {
+  
+  matches <- gregexpr(
+    "</div\\s*>",
+    line,
+    perl = TRUE
+  )[[1]]
+  
+  if (matches[1] == -1) {
+    return(0L)
+  }
+  
+  length(matches)
+}
+
+
+find_closing_div <- function(lines, start_line) {
+  
+  depth <- 0L
+  
+  for (i in seq.int(start_line, length(lines))) {
+    
+    depth <- depth +
+      count_open_divs(lines[i]) -
+      count_close_divs(lines[i])
+    
+    if (depth == 0L) {
+      return(i)
+    }
+  }
+  
+  stop(
+    paste0(
+      "Could not find the closing </div> for line ",
+      start_line,
+      "."
+    )
+  )
+}
+
+
+find_homepage_cards_row <- function(html_lines) {
+  
+  section_candidates <- grep(
+    paste0(
+      '<div\\b[^>]*class\\s*=\\s*["\']',
+      '[^"\']*\\bpy-2\\b',
+      '[^"\']*\\btext-center\\b',
+      '[^"\']*["\']'
+    ),
+    html_lines,
+    perl = TRUE
+  )
+  
+  if (length(section_candidates) == 0) {
+    stop("Could not identify the homepage cards section.")
+  }
+  
+  for (section_start in section_candidates) {
+    
+    section_end <- find_closing_div(
+      html_lines,
+      section_start
+    )
+    
+    possible_rows <- grep(
+      paste0(
+        '<div\\b[^>]*class\\s*=\\s*["\']',
+        '[^"\']*\\brow\\b',
+        '[^"\']*["\']'
+      ),
+      html_lines,
+      perl = TRUE
+    )
+    
+    possible_rows <- possible_rows[
+      possible_rows > section_start &
+        possible_rows < section_end
+    ]
+    
+    if (length(possible_rows) == 0) {
+      next
+    }
+    
+    for (row_start in possible_rows) {
+      
+      row_end <- find_closing_div(
+        html_lines,
+        row_start
+      )
+      
+      card_starts <- grep(
+        paste0(
+          '<div\\b[^>]*class\\s*=\\s*["\']',
+          '[^"\']*\\bcol-6\\b',
+          '[^"\']*\\bcol-xl-4\\b',
+          '[^"\']*\\bpy-2\\b',
+          '[^"\']*["\']'
+        ),
+        html_lines,
+        perl = TRUE
+      )
+      
+      card_starts <- card_starts[
+        card_starts > row_start &
+          card_starts < row_end
+      ]
+      
+      if (length(card_starts) > 0) {
+        return(
+          list(
+            section_start = section_start,
+            section_end = section_end,
+            row_start = row_start,
+            row_end = row_end,
+            card_starts = card_starts
+          )
+        )
+      }
+    }
+  }
+  
+  stop("Could not identify the homepage cards row.")
+}
+
+
+count_homepage_cards <- function(project_root) {
+  
+  index_html_path <- file.path(
+    project_root,
+    "index.html"
+  )
+  
+  if (!file.exists(index_html_path)) {
+    stop("index.html was not found.")
+  }
+  
+  html_lines <- readLines(
+    index_html_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  card_section <- find_homepage_cards_row(
+    html_lines
+  )
+  
+  length(card_section$card_starts)
+}
+
+
+add_row_centring_class <- function(row_line) {
+  
+  class_value <- sub(
+    paste0(
+      '^.*class\\s*=\\s*["\']',
+      '([^"\']*)',
+      '["\'].*$'
+    ),
+    "\\1",
+    row_line,
+    perl = TRUE
+  )
+  
+  classes <- strsplit(
+    trimws(class_value),
+    "\\s+"
+  )[[1]]
+  
+  if (!"justify-content-center" %in% classes) {
+    classes <- c(
+      classes,
+      "justify-content-center"
+    )
+  }
+  
+  replacement_class <- paste(
+    classes,
+    collapse = " "
+  )
+  
+  sub(
+    paste0(
+      '(class\\s*=\\s*["\'])',
+      '[^"\']*',
+      '(["\'])'
+    ),
+    paste0(
+      "\\1",
+      replacement_class,
+      "\\2"
+    ),
+    row_line,
+    perl = TRUE
+  )
+}
+
+
+blank_homepage_card <- function() {
+  
+  c(
+    '                <div class="col-6 col-xl-4 py-2">',
+    '                    <div class="home card h-100">',
+    '                        <div class="card-body d-flex flex-column justify-content-center text-center"></div>',
+    '                        <div class="card-footer blue-bg"></div>',
+    '                    </div>',
+    '                </div>'
+  )
+}
+
+
+update_homepage_card_count <- function(
+    project_root,
+    card_count
+) {
+  
+  index_html_path <- file.path(
+    project_root,
+    "index.html"
+  )
+  
+  if (!file.exists(index_html_path)) {
+    stop("index.html was not found.")
+  }
+  
+  card_count <- as.integer(card_count)
+  
+  if (
+    length(card_count) != 1 ||
+    is.na(card_count) ||
+    card_count < 1 ||
+    card_count > 9
+  ) {
+    stop("The number of cards must be between 1 and 9.")
+  }
+  
+  original_html <- readLines(
+    index_html_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  card_section <- find_homepage_cards_row(
+    original_html
+  )
+  
+  row_start <- card_section$row_start
+  row_end <- card_section$row_end
+  card_starts <- card_section$card_starts
+  
+  existing_cards <- lapply(
+    card_starts,
+    function(card_start) {
+      
+      card_end <- find_closing_div(
+        original_html,
+        card_start
+      )
+      
+      original_html[
+        card_start:card_end
+      ]
+    }
+  )
+  
+  cards_to_keep <- min(
+    length(existing_cards),
+    card_count
+  )
+  
+  updated_cards <- if (cards_to_keep > 0) {
+    existing_cards[
+      seq_len(cards_to_keep)
+    ]
+  } else {
+    list()
+  }
+  
+  additional_cards <- card_count - cards_to_keep
+  
+  if (additional_cards > 0) {
+    
+    updated_cards <- c(
+      updated_cards,
+      replicate(
+        additional_cards,
+        blank_homepage_card(),
+        simplify = FALSE
+      )
+    )
+  }
+  
+  row_opening <- add_row_centring_class(
+    original_html[row_start]
+  )
+  
+  replacement_row <- c(
+    row_opening,
+    unlist(
+      updated_cards,
+      use.names = FALSE
+    ),
+    original_html[row_end]
+  )
+  
+  updated_html <- c(
+    if (row_start > 1) {
+      original_html[
+        seq_len(row_start - 1)
+      ]
+    } else {
+      character()
+    },
+    
+    replacement_row,
+    
+    if (row_end < length(original_html)) {
+      original_html[
+        seq.int(
+          row_end + 1,
+          length(original_html)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_html,
+    index_html_path,
+    useBytes = TRUE
+  )
+  
+  invisible(index_html_path)
+}

@@ -96,6 +96,47 @@ ui <- fluidPage(
             label = "Save strapline",
             icon = icon("save"),
             class = "btn-primary"
+          ),
+          
+          tags$hr(),
+          
+          h3("Edit cards"),
+          
+          tags$p(
+            paste(
+              "Use homepage cards to display one key message for each",
+              "dashboard page. You can include between 1 and 9 cards."
+            )
+          ),
+          
+          tags$div(
+            style = paste(
+              "display: flex;",
+              "align-items: flex-end;",
+              "gap: 10px;",
+              "max-width: 360px;"
+            ),
+            
+            tags$div(
+              style = "flex: 1;",
+              
+              numericInput(
+                inputId = "homepage_card_count",
+                label = "Number of cards",
+                value = 6,
+                min = 1,
+                max = 9,
+                step = 1,
+                width = "100%"
+              )
+            ),
+            
+            actionButton(
+              inputId = "save_homepage_card_count",
+              label = "Save",
+              icon = icon("save"),
+              class = "btn-primary"
+            )
           )
         ),
         tabPanel("Page design"),
@@ -2510,6 +2551,86 @@ server <- function(input, output, session) {
         showNotification(
           paste(
             "Homepage strapline could not be updated:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+      }
+    )
+  })
+  
+  ## Edit number of cards on home page ####
+  
+  observeEvent(folder(), {
+    
+    existing_count <- tryCatch(
+      count_homepage_cards(
+        project_root = folder()
+      ),
+      error = function(error) {
+        NULL
+      }
+    )
+    
+    if (!is.null(existing_count)) {
+      updateNumericInput(
+        session = session,
+        inputId = "homepage_card_count",
+        value = existing_count
+      )
+    }
+    
+  }, ignoreInit = TRUE)
+  
+  ## Save number of homepage cards ####
+  
+  observeEvent(input$save_homepage_card_count, {
+    
+    req(folder())
+    req(input$homepage_card_count)
+    
+    requested_count <- as.integer(
+      input$homepage_card_count
+    )
+    
+    if (
+      is.na(requested_count) ||
+      requested_count < 1 ||
+      requested_count > 9
+    ) {
+      showNotification(
+        "Choose between 1 and 9 cards.",
+        type = "error"
+      )
+      
+      return()
+    }
+    
+    tryCatch(
+      {
+        update_homepage_card_count(
+          project_root = folder(),
+          card_count = requested_count
+        )
+        
+        showNotification(
+          paste0(
+            "Homepage updated to ",
+            requested_count,
+            if (requested_count == 1) {
+              " card."
+            } else {
+              " cards."
+            }
+          ),
+          type = "message"
+        )
+      },
+      error = function(error) {
+        showNotification(
+          paste(
+            "The homepage cards could not be updated:",
             conditionMessage(error)
           ),
           type = "error",
