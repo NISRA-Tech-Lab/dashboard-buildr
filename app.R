@@ -2947,6 +2947,113 @@ server <- function(input, output, session) {
     )
   })
   
+  ### Link in footer ####
+  
+  lapply(
+    seq_len(9),
+    function(card_number) {
+      
+      local({
+        current_card <- card_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "save_card_",
+              current_card
+            )
+          ]],
+          {
+            req(folder())
+            
+            if (
+              current_card >
+              homepage_card_editor_count()
+            ) {
+              return()
+            }
+            
+            selected_href <- input[[
+              paste0(
+                "card_",
+                current_card,
+                "_page"
+              )
+            ]]
+            
+            if (is.null(selected_href)) {
+              selected_href <- ""
+            }
+            
+            selected_href <- as.character(
+              selected_href
+            )
+            
+            config <- config_file()
+            navigation <- config$navigation
+            
+            selected_text <- ""
+            
+            if (nzchar(selected_href)) {
+              matching_page <- navigation[
+                navigation$href == selected_href,
+                ,
+                drop = FALSE
+              ]
+              
+              if (nrow(matching_page) != 1) {
+                showNotification(
+                  "The selected page could not be identified.",
+                  type = "error"
+                )
+                return()
+              }
+              
+              selected_text <- as.character(
+                matching_page$text[1]
+              )
+            }
+            
+            tryCatch(
+              {
+                update_homepage_card_link(
+                  project_root = folder(),
+                  card_number = current_card,
+                  page_href = selected_href,
+                  page_text = selected_text
+                )
+                
+                showNotification(
+                  paste0(
+                    "Card ",
+                    current_card,
+                    " updated."
+                  ),
+                  type = "message"
+                )
+              },
+              error = function(error) {
+                showNotification(
+                  paste(
+                    paste0(
+                      "Card ",
+                      current_card,
+                      " could not be updated:"
+                    ),
+                    conditionMessage(error)
+                  ),
+                  type = "error",
+                  duration = NULL
+                )
+              }
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
+  
   
   
   

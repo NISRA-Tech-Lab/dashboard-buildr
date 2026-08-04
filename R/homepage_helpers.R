@@ -1129,3 +1129,175 @@ read_homepage_strapline <- function(project_root) {
     )
   )
 }
+
+update_homepage_card_link <- function(
+    project_root,
+    card_number,
+    page_href = "",
+    page_text = ""
+) {
+  index_html_path <- file.path(
+    project_root,
+    "index.html"
+  )
+  
+  if (!file.exists(index_html_path)) {
+    stop("index.html was not found.")
+  }
+  
+  card_number <- as.integer(card_number)
+  
+  if (
+    length(card_number) != 1 ||
+    is.na(card_number) ||
+    card_number < 1
+  ) {
+    stop("A valid card number is required.")
+  }
+  
+  html_lines <- readLines(
+    index_html_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  card_section <- find_homepage_cards_row(
+    html_lines
+  )
+  
+  if (card_number > length(card_section$card_starts)) {
+    stop(
+      paste0(
+        "Card ",
+        card_number,
+        " was not found."
+      )
+    )
+  }
+  
+  card_start <- card_section$card_starts[card_number]
+  
+  card_end <- find_closing_div(
+    html_lines,
+    card_start
+  )
+  
+  footer_candidates <- grep(
+    'class=["\'][^"\']*\\bcard-footer\\b',
+    html_lines,
+    perl = TRUE
+  )
+  
+  footer_candidates <- footer_candidates[
+    footer_candidates >= card_start &
+      footer_candidates <= card_end
+  ]
+  
+  if (length(footer_candidates) != 1) {
+    stop(
+      paste0(
+        "Could not uniquely identify the footer for card ",
+        card_number,
+        "."
+      )
+    )
+  }
+  
+  footer_start <- footer_candidates[1]
+  
+  footer_end <- find_closing_div(
+    html_lines,
+    footer_start
+  )
+  
+  page_href <- trimws(page_href)
+  page_text <- trimws(page_text)
+  
+  if (nzchar(page_href)) {
+    if (!nzchar(page_text)) {
+      stop("The selected page has no display title.")
+    }
+    
+    escaped_href <- as.character(
+      htmltools::htmlEscape(
+        page_href,
+        attribute = TRUE
+      )
+    )
+    
+    escaped_text <- as.character(
+      htmltools::htmlEscape(
+        page_text,
+        attribute = FALSE
+      )
+    )
+    
+    footer_indent <- sub(
+      "^(\\s*).*",
+      "\\1",
+      html_lines[footer_start]
+    )
+    
+    content_line <- paste0(
+      footer_indent,
+      "    <a href=\"",
+      escaped_href,
+      "\">",
+      escaped_text,
+      "</a>"
+    )
+  } else {
+    content_line <- character()
+  }
+  
+  opening_line <- sub(
+    "^(.*?<div\\b[^>]*>).*",
+    "\\1",
+    html_lines[footer_start],
+    perl = TRUE
+  )
+  
+  closing_indent <- sub(
+    "^(\\s*).*",
+    "\\1",
+    html_lines[footer_start]
+  )
+  
+  replacement <- c(
+    opening_line,
+    content_line,
+    paste0(
+      closing_indent,
+      "</div>"
+    )
+  )
+  
+  updated_html <- c(
+    if (footer_start > 1) {
+      html_lines[seq_len(footer_start - 1)]
+    } else {
+      character()
+    },
+    
+    replacement,
+    
+    if (footer_end < length(html_lines)) {
+      html_lines[
+        seq.int(
+          footer_end + 1,
+          length(html_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_html,
+    index_html_path,
+    useBytes = TRUE
+  )
+  
+  invisible(index_html_path)
+}
