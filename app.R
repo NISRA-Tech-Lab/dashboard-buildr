@@ -13,6 +13,7 @@ source("R/page_helpers.R", local = TRUE)
 source("R/matrix_helpers.R", local = TRUE)
 source("R/homepage_helpers.R", local = TRUE)
 
+# ui ####
 ui <- fluidPage(
   theme = shinytheme("cosmo"),
   useShinyjs(),
@@ -131,12 +132,21 @@ ui <- fluidPage(
               )
             ),
             
-            actionButton(
-              inputId = "save_homepage_card_count",
-              label = "Save",
-              icon = icon("save"),
-              class = "btn-primary"
+            tags$div(
+              style = "margin-bottom: 15px;",
+              
+              actionButton(
+                inputId = "save_homepage_card_count",
+                label = "Save",
+                icon = icon("save"),
+                class = "btn-primary"
+              )
             )
+          ),
+          
+          tags$div(
+            style = "margin-top: 20px;",
+            uiOutput("homepage_card_editors")
           )
         ),
         tabPanel("Page design"),
@@ -2634,6 +2644,10 @@ server <- function(input, output, session) {
           card_count = requested_count
         )
         
+        homepage_card_editor_count(
+          requested_count
+        )
+        
         showNotification(
           paste0(
             "Homepage updated to ",
@@ -2657,6 +2671,270 @@ server <- function(input, output, session) {
           duration = NULL
         )
       }
+    )
+  })
+  
+  ## Accordions to edit cards
+  
+  homepage_card_editor_count <- reactiveVal(0)
+  
+  observe({
+    req(folder())
+    
+    card_count <- tryCatch(
+      count_homepage_cards(
+        project_root = folder()
+      ),
+      error = function(error) {
+        0L
+      }
+    )
+    
+    homepage_card_editor_count(card_count)
+    
+    if (card_count > 0) {
+      updateNumericInput(
+        session = session,
+        inputId = "homepage_card_count",
+        value = card_count
+      )
+    }
+  })
+  
+  output$homepage_card_editors <- renderUI({
+    
+    req(folder())
+    
+    card_count <- homepage_card_editor_count()
+    
+    if (
+      length(card_count) != 1 ||
+      is.na(card_count) ||
+      card_count < 1
+    ) {
+      return(
+        tags$em(
+          "No homepage cards were found."
+        )
+      )
+    }
+    
+    config <- config_file()
+    navigation <- config$navigation
+    
+    default_hrefs <- c(
+      "index.html",
+      "page.html",
+      "user-notes.html"
+    )
+    
+    custom_pages <- navigation[
+      !navigation$href %in% default_hrefs,
+      c("href", "text"),
+      drop = FALSE
+    ]
+    
+    page_choices <- c(
+      "No page link" = "",
+      stats::setNames(
+        custom_pages$href,
+        custom_pages$text
+      )
+    )
+    
+    accordion_id <- "homepage-card-accordion"
+    
+    tags$div(
+      id = accordion_id,
+      class = "panel-group",
+      role = "tablist",
+      `aria-multiselectable` = "false",
+      
+      lapply(
+        seq_len(card_count),
+        function(card_number) {
+          
+          heading_id <- paste0(
+            "homepage-card-heading-",
+            card_number
+          )
+          
+          collapse_id <- paste0(
+            "homepage-card-collapse-",
+            card_number
+          )
+          
+          is_open <- card_number == 1
+          
+          tags$div(
+            class = "panel panel-default",
+            
+            tags$div(
+              class = "panel-heading",
+              role = "tab",
+              id = heading_id,
+              
+              tags$h4(
+                class = "panel-title",
+                
+                tags$a(
+                  class = if (is_open) {
+                    ""
+                  } else {
+                    "collapsed"
+                  },
+                  role = "button",
+                  href = "javascript:void(0);",
+                  `data-toggle` = "collapse",
+                  `data-parent` = paste0(
+                    "#",
+                    accordion_id
+                  ),
+                  `data-target` = paste0(
+                    "#",
+                    collapse_id
+                  ),
+                  `aria-expanded` = if (is_open) {
+                    "true"
+                  } else {
+                    "false"
+                  },
+                  `aria-controls` = collapse_id,
+                  
+                  tags$span(
+                    paste(
+                      "Card",
+                      card_number
+                    )
+                  ),
+                  
+                  tags$span(
+                    class = "pull-right",
+                    icon("chevron-down")
+                  )
+                )
+              )
+            ),
+            
+            tags$div(
+              id = collapse_id,
+              class = paste(
+                "panel-collapse collapse",
+                if (is_open) {
+                  "in"
+                } else {
+                  ""
+                }
+              ),
+              role = "tabpanel",
+              `aria-labelledby` = heading_id,
+              
+              tags$div(
+                class = "panel-body",
+                
+                textInput(
+                  inputId = paste0(
+                    "card_",
+                    card_number,
+                    "_top_line"
+                  ),
+                  label = "Top line",
+                  value = "",
+                  width = "100%"
+                ),
+                
+                tags$div(
+                  class = "form-group",
+                  
+                  tags$label(
+                    `for` = paste0(
+                      "card_",
+                      card_number,
+                      "_value"
+                    ),
+                    "Value"
+                  ),
+                  
+                  tags$div(
+                    class = "input-group",
+                    
+                    tags$input(
+                      id = paste0(
+                        "card_",
+                        card_number,
+                        "_value"
+                      ),
+                      type = "text",
+                      class = "form-control",
+                      value = "",
+                      readonly = "readonly",
+                      placeholder = "No value calculated"
+                    ),
+                    
+                    tags$span(
+                      class = "input-group-btn",
+                      
+                      actionButton(
+                        inputId = paste0(
+                          "calculate_card_",
+                          card_number
+                        ),
+                        label = "Calculate",
+                        icon = icon("calculator"),
+                        class = "btn-default"
+                      )
+                    )
+                  )
+                ),
+                
+                textInput(
+                  inputId = paste0(
+                    "card_",
+                    card_number,
+                    "_unit"
+                  ),
+                  label = "Unit",
+                  value = "",
+                  width = "100%"
+                ),
+                
+                textInput(
+                  inputId = paste0(
+                    "card_",
+                    card_number,
+                    "_bottom_line"
+                  ),
+                  label = "Bottom line",
+                  value = "",
+                  width = "100%"
+                ),
+                
+                selectInput(
+                  inputId = paste0(
+                    "card_",
+                    card_number,
+                    "_page"
+                  ),
+                  label = "Link to page",
+                  choices = page_choices,
+                  selected = "",
+                  width = "100%"
+                ),
+                
+                actionButton(
+                  inputId = paste0(
+                    "save_card_",
+                    card_number
+                  ),
+                  label = "Save card changes",
+                  icon = icon("save"),
+                  class = "btn-primary"
+                )
+              )
+            )
+          )
+        }
+      )
     )
   })
   
