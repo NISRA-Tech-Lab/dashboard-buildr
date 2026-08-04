@@ -289,54 +289,7 @@ clear_homepage_files <- function(project_root) {
     )
   }
   
-  # Clear index.js after the marker.
-  marker_text <- "// Insert values into homepage cards below"
   
-  marker_line <- grep(
-    marker_text,
-    original_js,
-    fixed = TRUE
-  )
-  
-  if (length(marker_line) != 1) {
-    stop(
-      paste0(
-        "Could not uniquely identify the JavaScript marker: ",
-        marker_text
-      )
-    )
-  }
-  
-  closing_line <- grep(
-    "^\\s*\\}\\)\\s*;?\\s*$",
-    original_js
-  )
-  
-  if (length(closing_line) == 0) {
-    stop(
-      paste(
-        "Could not identify the closing line of the",
-        "DOMContentLoaded event listener."
-      )
-    )
-  }
-  
-  closing_line <- tail(
-    closing_line,
-    1
-  )
-  
-  if (closing_line <= marker_line) {
-    stop(
-      "The JavaScript closing line occurs before the marker."
-    )
-  }
-  
-  updated_js <- c(
-    original_js[seq_len(marker_line)],
-    "",
-    original_js[closing_line]
-  )
   
   tryCatch(
     {
@@ -346,10 +299,14 @@ clear_homepage_files <- function(project_root) {
         useBytes = TRUE
       )
       
-      writeLines(
-        updated_js,
-        index_js_path,
-        useBytes = TRUE
+      card_count <- length(
+        find_homepage_cards_row(updated_html)$card_starts
+      )
+      
+      update_homepage_js_card_sections(
+        project_root = project_root,
+        card_count = card_count,
+        preserve_existing = FALSE
       )
     },
     error = function(error) {
@@ -869,11 +826,242 @@ update_homepage_card_count <- function(
     }
   )
   
-  writeLines(
-    updated_html,
-    index_html_path,
-    useBytes = TRUE
+  index_js_path <- file.path(
+    project_root,
+    "src",
+    "index.js"
+  )
+  
+  if (!file.exists(index_js_path)) {
+    stop("src/index.js was not found.")
+  }
+  
+  original_js <- readLines(
+    index_js_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  tryCatch(
+    {
+      writeLines(
+        updated_html,
+        index_html_path,
+        useBytes = TRUE
+      )
+      
+      update_homepage_js_card_sections(
+        project_root = project_root,
+        card_count = card_count,
+        preserve_existing = TRUE
+      )
+    },
+    error = function(error) {
+      
+      writeLines(
+        original_html,
+        index_html_path,
+        useBytes = TRUE
+      )
+      
+      writeLines(
+        original_js,
+        index_js_path,
+        useBytes = TRUE
+      )
+      
+      stop(
+        paste(
+          "Homepage card changes were restored after an error:",
+          conditionMessage(error)
+        ),
+        call. = FALSE
+      )
+    }
   )
   
   invisible(index_html_path)
+}
+
+update_homepage_js_card_sections <- function(
+    project_root,
+    card_count,
+    preserve_existing = TRUE
+) {
+  
+  js_path <- file.path(
+    project_root,
+    "src",
+    "index.js"
+  )
+  
+  if (!file.exists(js_path)) {
+    stop("src/index.js was not found.")
+  }
+  
+  card_count <- as.integer(card_count)
+  
+  if (
+    length(card_count) != 1 ||
+    is.na(card_count) ||
+    card_count < 1 ||
+    card_count > 9
+  ) {
+    stop("card_count must be between 1 and 9.")
+  }
+  
+  lines <- readLines(
+    js_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  anchor <- grep(
+    "^\\s*//\\s*Insert values into homepage cards below\\s*$",
+    lines
+  )
+  
+  if (length(anchor) != 1) {
+    stop(
+      "Could not find '// Insert values into homepage cards below'."
+    )
+  }
+  
+  closing_lines <- grep(
+    "^\\s*\\}\\)\\s*;?\\s*$",
+    lines
+  )
+  
+  if (length(closing_lines) == 0) {
+    stop(
+      "Could not identify the end of the event listener."
+    )
+  }
+  
+  closing <- tail(
+    closing_lines,
+    1
+  )
+  
+  if (closing <= anchor) {
+    stop(
+      "The event listener closes before the card content marker."
+    )
+  }
+  
+  sections <- list()
+  
+  if (isTRUE(preserve_existing)) {
+    
+    existing_region <- if (closing > anchor + 1) {
+      lines[
+        seq.int(
+          anchor + 1,
+          closing - 1
+        )
+      ]
+    } else {
+      character()
+    }
+    
+    comment_lines <- grep(
+      "^\\s*//\\s*Content for card\\s+[0-9]+\\s*$",
+      existing_region
+    )
+    
+    existing_nonblank <- existing_region[
+      nzchar(trimws(existing_region))
+    ]
+    
+    if (
+      length(comment_lines) == 0 &&
+      length(existing_nonblank) > 0
+    ) {
+      stop(
+        paste(
+          "Existing homepage JavaScript has not yet been divided",
+          "into card sections. Clear the template content first."
+        )
+      )
+    }
+    
+    if (length(comment_lines) > 0) {
+      
+      for (i in seq_along(comment_lines)) {
+        
+        section_start <- comment_lines[i]
+        
+        section_end <- if (i < length(comment_lines)) {
+          comment_lines[i + 1] - 1
+        } else {
+          length(existing_region)
+        }
+        
+        sections[[i]] <- existing_region[
+          section_start:section_end
+        ]
+      }
+    }
+  }
+  
+  new_region <- character()
+  
+  for (i in seq_len(card_count)) {
+    
+    if (
+      isTRUE(preserve_existing) &&
+      i <= length(sections)
+    ) {
+      
+      section <- sections[[i]]
+      
+      # Renumber the comment while preserving all code in the section.
+      section[1] <- paste0(
+        "    // Content for card ",
+        i
+      )
+      
+      # Remove only trailing blank lines so spacing can be rebuilt
+      # consistently between card sections.
+      while (
+        length(section) > 1 &&
+        !nzchar(trimws(tail(section, 1)))
+      ) {
+        section <- head(
+          section,
+          -1
+        )
+      }
+      
+    } else {
+      
+      section <- paste0(
+        "    // Content for card ",
+        i
+      )
+    }
+    
+    # Add exactly two empty lines after every card section.
+    new_region <- c(
+      new_region,
+      section,
+      "",
+      ""
+    )
+  }
+  
+  updated <- c(
+    lines[seq_len(anchor)],
+    "",
+    new_region,
+    lines[closing:length(lines)]
+  )
+  
+  writeLines(
+    updated,
+    js_path,
+    useBytes = TRUE
+  )
+  
+  invisible(js_path)
 }
