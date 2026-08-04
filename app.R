@@ -2839,6 +2839,32 @@ server <- function(input, output, session) {
               tags$div(
                 class = "panel-body",
                 
+                tags$div(
+                  class = "alert alert-info",
+                  
+                  tags$p(
+                    style = "margin-bottom: 8px;",
+                    
+                    paste(
+                      "Use the fields below to construct a short,",
+                      "user-friendly sentence that communicates one key message."
+                    )
+                  ),
+                  
+                  tags$p(
+                    style = "margin-bottom: 0;",
+                    
+                    "You can insert dynamic years in the Top line or Bottom line using ",
+                    
+                    tags$code("<<latest-year>>"),
+                    ", ",
+                    tags$code("<<last-year>>"),
+                    " or ",
+                    tags$code("<<first-year>>"),
+                    "."
+                  )
+                ),
+                
                 textInput(
                   inputId = paste0(
                     "card_",

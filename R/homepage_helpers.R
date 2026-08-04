@@ -1302,6 +1302,56 @@ update_homepage_card_link <- function(
   invisible(index_html_path)
 }
 
+parse_homepage_year_tags <- function(text) {
+  
+  text <- trimws(
+    as.character(text)
+  )
+  
+  placeholders <- c(
+    "<<latest-year>>" = "___HOMEPAGE_LATEST_YEAR___",
+    "<<last-year>>" = "___HOMEPAGE_LAST_YEAR___",
+    "<<first-year>>" = "___HOMEPAGE_FIRST_YEAR___"
+  )
+  
+  for (tag in names(placeholders)) {
+    text <- gsub(
+      pattern = tag,
+      replacement = placeholders[[tag]],
+      x = text,
+      fixed = TRUE
+    )
+  }
+  
+  # Escape all other user-entered HTML.
+  text <- as.character(
+    htmltools::htmlEscape(
+      text,
+      attribute = FALSE
+    )
+  )
+  
+  replacements <- c(
+    "___HOMEPAGE_LATEST_YEAR___" =
+      '<span class="latest-year"></span>',
+    "___HOMEPAGE_LAST_YEAR___" =
+      '<span class="last-year"></span>',
+    "___HOMEPAGE_FIRST_YEAR___" =
+      '<span class="first-year"></span>'
+  )
+  
+  for (placeholder in names(replacements)) {
+    text <- gsub(
+      pattern = placeholder,
+      replacement = replacements[[placeholder]],
+      x = text,
+      fixed = TRUE
+    )
+  }
+  
+  text
+}
+
 update_homepage_card_body <- function(
     project_root,
     card_number,
@@ -1387,11 +1437,8 @@ update_homepage_card_body <- function(
   unit <- trimws(unit)
   bottom_line <- trimws(bottom_line)
   
-  escaped_top_line <- as.character(
-    htmltools::htmlEscape(
-      top_line,
-      attribute = FALSE
-    )
+  parsed_top_line <- parse_homepage_year_tags(
+    top_line
   )
   
   escaped_unit <- as.character(
@@ -1401,11 +1448,8 @@ update_homepage_card_body <- function(
     )
   )
   
-  escaped_bottom_line <- as.character(
-    htmltools::htmlEscape(
-      bottom_line,
-      attribute = FALSE
-    )
+  parsed_bottom_line <- parse_homepage_year_tags(
+    bottom_line
   )
   
   opening_line <- sub(
@@ -1446,7 +1490,7 @@ update_homepage_card_body <- function(
     paste0(
       content_indent,
       "<p>",
-      escaped_top_line
+      parsed_top_line
     ),
     paste0(
       content_indent,
@@ -1457,7 +1501,7 @@ update_homepage_card_body <- function(
     paste0(
       content_indent,
       "    <br>",
-      escaped_bottom_line
+      parsed_bottom_line
     ),
     paste0(
       content_indent,
