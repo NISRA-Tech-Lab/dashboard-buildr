@@ -2853,58 +2853,74 @@ server <- function(input, output, session) {
                 ),
                 
                 tags$div(
-                  class = "form-group",
-                  
-                  tags$label(
-                    `for` = paste0(
-                      "card_",
-                      card_number,
-                      "_value"
-                    ),
-                    "Value"
+                  style = paste(
+                    "display: flex;",
+                    "align-items: flex-end;",
+                    "gap: 12px;"
                   ),
                   
                   tags$div(
-                    class = "input-group",
+                    style = "flex: 2;",
                     
-                    tags$input(
-                      id = paste0(
-                        "card_",
-                        card_number,
-                        "_value"
-                      ),
-                      type = "text",
-                      class = "form-control",
-                      value = "",
-                      readonly = "readonly",
-                      placeholder = "No value calculated"
-                    ),
-                    
-                    tags$span(
-                      class = "input-group-btn",
+                    tags$div(
+                      class = "form-group",
                       
-                      actionButton(
-                        inputId = paste0(
-                          "calculate_card_",
-                          card_number
+                      tags$label(
+                        `for` = paste0(
+                          "card_",
+                          card_number,
+                          "_value"
                         ),
-                        label = "Calculate",
-                        icon = icon("calculator"),
-                        class = "btn-default"
+                        "Value"
+                      ),
+                      
+                      tags$div(
+                        class = "input-group",
+                        
+                        tags$input(
+                          id = paste0(
+                            "card_",
+                            card_number,
+                            "_value"
+                          ),
+                          type = "text",
+                          class = "form-control",
+                          value = "",
+                          readonly = "readonly",
+                          placeholder = "No value calculated"
+                        ),
+                        
+                        tags$span(
+                          class = "input-group-btn",
+                          
+                          actionButton(
+                            inputId = paste0(
+                              "calculate_card_",
+                              card_number
+                            ),
+                            label = "Calculate",
+                            icon = icon("calculator"),
+                            class = "btn-default"
+                          )
+                        )
                       )
                     )
-                  )
-                ),
-                
-                textInput(
-                  inputId = paste0(
-                    "card_",
-                    card_number,
-                    "_unit"
                   ),
-                  label = "Unit",
-                  value = "",
-                  width = "100%"
+                  
+                  tags$div(
+                    style = "flex: 1;",
+                    
+                    textInput(
+                      inputId = paste0(
+                        "card_",
+                        card_number,
+                        "_unit"
+                      ),
+                      label = "Unit",
+                      value = "",
+                      width = "100%"
+                    )
+                  )
                 ),
                 
                 textInput(
