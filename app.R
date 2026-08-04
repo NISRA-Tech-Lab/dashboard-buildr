@@ -7,11 +7,9 @@ library(V8)
 library(DT)
 library(shinythemes)
 
-source("R/file_helpers.R", local = TRUE)
-source("R/config_helpers.R", local = TRUE)
-source("R/page_helpers.R", local = TRUE)
-source("R/matrix_helpers.R", local = TRUE)
-source("R/homepage_helpers.R", local = TRUE)
+for (file in list.files("R", full.names = TRUE)) {
+  source(file, local = TRUE)
+}
 
 # ui ####
 ui <- fluidPage(
@@ -3013,13 +3011,24 @@ server <- function(input, output, session) {
               )
             ]]
             
-            card_value <- input[[
-              paste0(
-                "card_",
-                current_card,
-                "_value"
-              )
+            stored_calculation <- card_calculations[[
+              as.character(current_card)
             ]]
+            
+            if (is.null(stored_calculation)) {
+              showNotification(
+                paste0(
+                  "Calculate a value for card ",
+                  current_card,
+                  " before saving."
+                ),
+                type = "error"
+              )
+              
+              return()
+            }
+            
+            card_value <- stored_calculation$raw_value
             
             unit <- input[[
               paste0(
@@ -3116,8 +3125,601 @@ server <- function(input, output, session) {
     }
   )
   
+  ## Calculate home page values ####
+  active_calculation_card <- reactiveVal(NULL)
   
+  calculation_data <- reactiveVal(NULL)
   
+  card_calculations <- reactiveValues()
+  
+  show_card_calculation_modal <- function(
+    card_number
+  ) {
+    
+    files <- loaded_table_files()
+    metadata <- loaded_table_metadata()
+    
+    if (length(files) == 0) {
+      showNotification(
+        "No Data Portal tables have been loaded.",
+        type = "error"
+      )
+      
+      return()
+    }
+    
+    matrices <- tools::file_path_sans_ext(
+      basename(files)
+    )
+    
+    matrix_labels <- vapply(
+      matrices,
+      function(matrix) {
+        
+        table_metadata <- metadata[[matrix]]
+        
+        label <- if (
+          !is.null(table_metadata) &&
+          !is.null(table_metadata$label) &&
+          length(table_metadata$label) > 0 &&
+          nzchar(as.character(table_metadata$label)[1])
+        ) {
+          as.character(table_metadata$label)[1]
+        } else {
+          matrix
+        }
+        
+        paste0(
+          label,
+          " (",
+          matrix,
+          ")"
+        )
+      },
+      character(1)
+    )
+    
+    matrix_choices <- stats::setNames(
+      matrices,
+      matrix_labels
+    )
+    
+    saved_calculation <- card_calculations[[
+      as.character(card_number)
+    ]]
+    
+    selected_matrix <- if (
+      !is.null(saved_calculation) &&
+      saved_calculation$matrix %in% matrices
+    ) {
+      saved_calculation$matrix
+    } else {
+      matrices[1]
+    }
+    
+    selected_decimals <- if (
+      !is.null(saved_calculation)
+    ) {
+      saved_calculation$decimal_places
+    } else {
+      0
+    }
+    
+    selected_comma <- if (
+      !is.null(saved_calculation)
+    ) {
+      isTRUE(
+        saved_calculation$comma_separator
+      )
+    } else {
+      FALSE
+    }
+    
+    active_calculation_card(
+      card_number
+    )
+    
+    calculation_data(NULL)
+    
+    showModal(
+      modalDialog(
+        title = paste(
+          "Calculate value for card",
+          card_number
+        ),
+        
+        h4("Select data"),
+        
+        selectInput(
+          inputId = "calculation_matrix",
+          label = "Data Portal table",
+          choices = matrix_choices,
+          selected = selected_matrix,
+          width = "100%"
+        ),
+        
+        tags$div(
+          style = "margin-top: 15px;",
+          
+          DT::DTOutput(
+            "calculation_table_preview"
+          )
+        ),
+        
+        tags$hr(),
+        
+        h4("Filter data"),
+        
+        uiOutput(
+          "calculation_filters_ui"
+        ),
+        
+        tags$div(
+          class = "well",
+          style = paste(
+            "margin-top: 15px;",
+            "margin-bottom: 15px;"
+          ),
+          
+          tags$strong(
+            "Current value"
+          ),
+          
+          tags$div(
+            style = paste(
+              "font-size: 2em;",
+              "margin-top: 5px;"
+            ),
+            
+            textOutput(
+              "calculation_current_value",
+              inline = TRUE
+            )
+          )
+        ),
+        
+        fluidRow(
+          column(
+            width = 6,
+            
+            numericInput(
+              inputId = "calculation_decimal_places",
+              label = "Number of decimal places",
+              value = selected_decimals,
+              min = 0,
+              max = 10,
+              step = 1,
+              width = "100%"
+            )
+          ),
+          
+          column(
+            width = 6,
+            
+            tags$div(
+              style = "margin-top: 25px;",
+              
+              checkboxInput(
+                inputId = "calculation_comma_separator",
+                label = "Use comma separator",
+                value = selected_comma
+              )
+            )
+          )
+        ),
+        
+        footer = tagList(
+          modalButton("Cancel"),
+          
+          actionButton(
+            inputId = "finish_card_calculation",
+            label = "Done",
+            icon = icon("check"),
+            class = "btn-primary"
+          )
+        ),
+        
+        size = "l",
+        easyClose = FALSE
+      )
+    )
+  }
+  
+  ## Connect each Calculate button ####
+  lapply(
+    seq_len(9),
+    function(card_number) {
+      
+      local({
+        
+        current_card <- card_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "calculate_card_",
+              current_card
+            )
+          ]],
+          {
+            req(folder())
+            
+            if (
+              current_card >
+              homepage_card_editor_count()
+            ) {
+              return()
+            }
+            
+            show_card_calculation_modal(
+              current_card
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
+  
+  ### Read the selected CSV ####
+  observeEvent(
+    input$calculation_matrix,
+    {
+      req(folder())
+      req(input$calculation_matrix)
+      
+      saved_calculation <- card_calculations[[
+        as.character(
+          active_calculation_card()
+        )
+      ]]
+      
+      result <- tryCatch(
+        read_card_calculation_data(
+          project_root = folder(),
+          matrix = input$calculation_matrix
+        ),
+        error = function(error) {
+          
+          showNotification(
+            paste(
+              "The table could not be loaded:",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = NULL
+          )
+          
+          NULL
+        }
+      )
+      
+      calculation_data(result)
+      
+    },
+    ignoreInit = FALSE
+  )
+  
+  ### Render the dynamic filters ####
+  output$calculation_filters_ui <- renderUI({
+    
+    data_definition <- calculation_data()
+    
+    req(data_definition)
+    
+    saved_calculation <- card_calculations[[
+      as.character(
+        active_calculation_card()
+      )
+    ]]
+    
+    same_saved_matrix <- (
+      !is.null(saved_calculation) &&
+        identical(
+          saved_calculation$matrix,
+          data_definition$matrix
+        )
+    )
+    
+    row_filter_controls <- lapply(
+      data_definition$row_filters,
+      function(filter_definition) {
+        
+        selected_values <- if (
+          same_saved_matrix &&
+          !is.null(
+            saved_calculation$filters[[
+              filter_definition$input_id
+            ]]
+          )
+        ) {
+          saved_calculation$filters[[
+            filter_definition$input_id
+          ]]
+        } else {
+          filter_definition$choices
+        }
+        
+        selectizeInput(
+          inputId = filter_definition$input_id,
+          label = filter_definition$label,
+          choices = filter_definition$choices,
+          selected = selected_values,
+          multiple = TRUE,
+          width = "100%",
+          options = list(
+            plugins = list(
+              "remove_button"
+            )
+          )
+        )
+      }
+    )
+    
+    selected_pivot_columns <- if (
+      same_saved_matrix &&
+      !is.null(
+        saved_calculation$selected_columns
+      )
+    ) {
+      intersect(
+        saved_calculation$selected_columns,
+        data_definition$pivot_columns
+      )
+    } else {
+      data_definition$pivot_columns[1]
+    }
+    
+    if (length(selected_pivot_columns) == 0) {
+      selected_pivot_columns <-
+        data_definition$pivot_columns[1]
+    }
+    
+    tagList(
+      row_filter_controls,
+      
+      selectizeInput(
+        inputId = "calculation_pivot_columns",
+        label = data_definition$pivot_label,
+        choices = data_definition$pivot_columns,
+        selected = selected_pivot_columns,
+        multiple = TRUE,
+        width = "100%",
+        options = list(
+          plugins = list(
+            "remove_button"
+          )
+        )
+      )
+    )
+  })
+  
+  ### Gather the current filter selections ####
+  calculation_filter_selections <- reactive({
+    
+    data_definition <- calculation_data()
+    
+    req(data_definition)
+    
+    selections <- list()
+    
+    for (
+      filter_definition in
+      data_definition$row_filters
+    ) {
+      
+      selections[[
+        filter_definition$input_id
+      ]] <- input[[
+        filter_definition$input_id
+      ]]
+    }
+    
+    selections
+  })
+  
+  ### Produce the filtered preview ####
+  calculation_filtered_data <- reactive({
+    
+    data_definition <- calculation_data()
+    
+    req(data_definition)
+    
+    filter_card_calculation_data(
+      calculation_data = data_definition,
+      selections = calculation_filter_selections()
+    )
+  })
+  
+  output$calculation_table_preview <- DT::renderDT({
+    
+    preview_data <- calculation_filtered_data()
+    
+    DT::datatable(
+      preview_data,
+      rownames = FALSE,
+      selection = "none",
+      filter = "none",
+      class = "cell-border compact stripe",
+      
+      options = list(
+        paging = FALSE,
+        searching = FALSE,
+        ordering = FALSE,
+        info = FALSE,
+        scrollX = TRUE,
+        scrollY = "150px",
+        scrollCollapse = TRUE,
+        autoWidth = TRUE
+      )
+    )
+  })
+  
+  ### Calculate the current value ####
+  calculation_current_raw_value <- reactive({
+    
+    data_definition <- calculation_data()
+    filtered_data <- calculation_filtered_data()
+    
+    req(data_definition)
+    
+    selected_columns <- input$calculation_pivot_columns
+    
+    if (is.null(selected_columns)) {
+      selected_columns <- character()
+    }
+    
+    calculate_card_value(
+      calculation_data = data_definition,
+      filtered_data = filtered_data,
+      selected_columns = selected_columns
+    )
+  })
+  
+  output$calculation_current_value <- renderText({
+    
+    value <- calculation_current_raw_value()
+    
+    if (
+      length(value) != 1 ||
+      is.na(value) ||
+      !is.finite(value)
+    ) {
+      return(
+        "No numeric value"
+      )
+    }
+    
+    decimal_places <- input$calculation_decimal_places
+    
+    if (is.null(decimal_places)) {
+      decimal_places <- 0
+    }
+    
+    format_card_calculation_value(
+      value = value,
+      decimal_places = decimal_places,
+      comma_separator = isTRUE(
+        input$calculation_comma_separator
+      )
+    )
+  })
+  
+  ### Store the calculation when Done is clicked ####
+  observeEvent(
+    input$finish_card_calculation,
+    {
+      card_number <- active_calculation_card()
+      data_definition <- calculation_data()
+      value <- calculation_current_raw_value()
+      
+      req(card_number)
+      req(data_definition)
+      
+      if (
+        length(value) != 1 ||
+        is.na(value) ||
+        !is.finite(value)
+      ) {
+        showNotification(
+          paste(
+            "The current selections do not produce",
+            "a numeric value."
+          ),
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      decimal_places <- as.integer(
+        input$calculation_decimal_places
+      )
+      
+      if (
+        is.na(decimal_places) ||
+        decimal_places < 0
+      ) {
+        showNotification(
+          "Enter a valid number of decimal places.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      selected_columns <- input$calculation_pivot_columns
+      
+      if (
+        is.null(selected_columns) ||
+        length(selected_columns) == 0
+      ) {
+        showNotification(
+          paste0(
+            "Select at least one ",
+            data_definition$pivot_label,
+            " option."
+          ),
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      stored_calculation <- list(
+        matrix = data_definition$matrix,
+        filters = calculation_filter_selections(),
+        selected_columns = as.character(
+          selected_columns
+        ),
+        raw_value = value,
+        decimal_places = decimal_places,
+        comma_separator = isTRUE(
+          input$calculation_comma_separator
+        )
+      )
+      
+      card_calculations[[
+        as.character(card_number)
+      ]] <- stored_calculation
+      
+      display_value <- format_card_calculation_value(
+        value = value,
+        decimal_places = decimal_places,
+        comma_separator = stored_calculation$comma_separator
+      )
+      
+      value_input_id <- paste0(
+        "card_",
+        card_number,
+        "_value"
+      )
+      
+      shinyjs::runjs(
+        sprintf(
+          paste0(
+            "$('#%s').val(%s).trigger('change');"
+          ),
+          value_input_id,
+          jsonlite::toJSON(
+            display_value,
+            auto_unbox = TRUE
+          )
+        )
+      )
+      
+      removeModal()
+      
+      showNotification(
+        paste0(
+          "Calculated value stored for card ",
+          card_number,
+          "."
+        ),
+        type = "message"
+      )
+    }
+  )
   
 }
 
