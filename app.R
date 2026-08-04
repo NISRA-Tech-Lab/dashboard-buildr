@@ -346,12 +346,32 @@ server <- function(input, output, session) {
       return(list())
     }
     
+    # Treat an empty file as "no metadata yet".
+    if (file.info(metadata_path)$size == 0) {
+      return(list())
+    }
+    
+    metadata_text <- paste(
+      readLines(
+        metadata_path,
+        warn = FALSE,
+        encoding = "UTF-8"
+      ),
+      collapse = "\n"
+    )
+    
+    # Ignore files containing only whitespace.
+    if (!nzchar(trimws(metadata_text))) {
+      return(list())
+    }
+    
     tryCatch(
       jsonlite::fromJSON(
-        txt = metadata_path,
+        txt = metadata_text,
         simplifyVector = FALSE
       ),
       error = function(error) {
+        
         showNotification(
           paste(
             "Could not read public/data/data.json:",
