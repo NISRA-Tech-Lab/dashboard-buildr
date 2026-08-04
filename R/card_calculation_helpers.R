@@ -193,10 +193,9 @@ filter_card_calculation_data <- function(
       selected_values
     )
     
+    # No selection means this variable is not filtered.
     if (length(selected_values) == 0) {
-      return(
-        filtered_data[0, , drop = FALSE]
-      )
+      next
     }
     
     filtered_data <- filtered_data[

@@ -1504,11 +1504,53 @@ update_homepage_card_body <- function(
   invisible(index_html_path)
 }
 
+escape_javascript_string <- function(value) {
+  
+  value <- as.character(value)
+  
+  value <- gsub(
+    "\\\\",
+    "\\\\\\\\",
+    value
+  )
+  
+  value <- gsub(
+    '"',
+    '\\\\"',
+    value
+  )
+  
+  value <- gsub(
+    "\r",
+    "\\\\r",
+    value
+  )
+  
+  value <- gsub(
+    "\n",
+    "\\\\n",
+    value
+  )
+  
+  value
+}
+
+
+javascript_string <- function(value) {
+  
+  paste0(
+    '"',
+    escape_javascript_string(value),
+    '"'
+  )
+}
+
 update_homepage_card_value_js <- function(
     project_root,
     card_number,
-    value
+    calculation
 ) {
+  
   js_path <- file.path(
     project_root,
     "src",
@@ -1529,10 +1571,45 @@ update_homepage_card_value_js <- function(
     stop("A valid card number is required.")
   }
   
-  value <- trimws(as.character(value))
+  if (
+    is.null(calculation) ||
+    is.null(calculation$matrix) ||
+    !nzchar(calculation$matrix)
+  ) {
+    stop("No stored calculation was supplied.")
+  }
   
-  if (!nzchar(value)) {
-    stop("A card value is required.")
+  matrix <- as.character(
+    calculation$matrix
+  )[1]
+  
+  selected_columns <- as.character(
+    calculation$selected_columns
+  )
+  
+  if (length(selected_columns) == 0) {
+    stop("No value column was selected.")
+  }
+  
+  decimal_places <- as.integer(
+    calculation$decimal_places
+  )
+  
+  if (
+    is.na(decimal_places) ||
+    decimal_places < 0
+  ) {
+    decimal_places <- 0L
+  }
+  
+  comma_separator <- isTRUE(
+    calculation$comma_separator
+  )
+  
+  js_filters <- calculation$js_filters
+  
+  if (is.null(js_filters)) {
+    js_filters <- list()
   }
   
   js_lines <- readLines(
@@ -1563,14 +1640,14 @@ update_homepage_card_value_js <- function(
     )
   }
   
-  next_markers <- grep(
+  all_markers <- grep(
     "^\\s*//\\s*Content for card\\s+[0-9]+\\s*$",
     js_lines,
     perl = TRUE
   )
   
-  next_markers <- next_markers[
-    next_markers > current_marker
+  next_markers <- all_markers[
+    all_markers > current_marker
   ]
   
   closing_lines <- grep(
@@ -1590,7 +1667,20 @@ update_homepage_card_value_js <- function(
     tail(closing_lines, 1) - 1
   }
   
-  variable_name <- paste0(
+  data_variable <- paste0(
+    matrix,
+    "_data"
+  )
+  
+  metadata_variable <- matrix
+  
+  raw_variable <- paste0(
+    "headline_",
+    card_number,
+    "_raw"
+  )
+  
+  headline_variable <- paste0(
     "headline_",
     card_number
   )
@@ -1601,30 +1691,212 @@ update_homepage_card_value_js <- function(
     "-value"
   )
   
-  replacement <- c(
-    js_lines[current_marker],
-    "",
+  load_lines <- c(
     paste0(
-      "    const ",
-      variable_name,
-      " = ",
-      value,
-      ";"
+      "    const [",
+      data_variable,
+      ", ",
+      metadata_variable,
+      '] = await readData("',
+      escape_javascript_string(matrix),
+      '");'
     ),
+    paste0(
+      "    updateYearSpans(",
+      data_variable,
+      ");"
+    ),
+    ""
+  )
+  
+  filter_lines <- character()
+  
+  if (length(js_filters) > 0) {
+    
+    filter_conditions <- character()
+    
+    for (column_name in names(js_filters)) {
+      
+      selected_values <- as.character(
+        js_filters[[column_name]]
+      )
+      
+      if (length(selected_values) == 1) {
+        
+        condition <- paste0(
+          'row[',
+          javascript_string(column_name),
+          "] == ",
+          javascript_string(selected_values)
+        )
+        
+      } else {
+        
+        js_values <- paste(
+          vapply(
+            selected_values,
+            javascript_string,
+            character(1)
+          ),
+          collapse = ", "
+        )
+        
+        condition <- paste0(
+          "[",
+          js_values,
+          "].includes(row[",
+          javascript_string(column_name),
+          "])"
+        )
+      }
+      
+      filter_conditions <- c(
+        filter_conditions,
+        condition
+      )
+    }
+    
+    combined_condition <- paste(
+      filter_conditions,
+      collapse = " && "
+    )
+    
+    filter_lines <- paste0(
+      "        .filter(row => ",
+      combined_condition,
+      ")"
+    )
+  }
+  
+  selected_column_js <- paste(
+    vapply(
+      selected_columns,
+      javascript_string,
+      character(1)
+    ),
+    collapse = ", "
+  )
+  
+  if (length(selected_columns) == 1) {
+    
+    selected_column <- javascript_string(
+      selected_columns[[1]]
+    )
+    
+    value_lines <- c(
+      paste0(
+        "    const ",
+        raw_variable,
+        " = ",
+        data_variable
+      ),
+      filter_lines,
+      paste0(
+        "        .map(col => col[",
+        selected_column,
+        "])"
+      ),
+      paste0(
+        "        .reduce((sum, value) => ",
+        "sum + (Number(value) || 0), 0);"
+      ),
+      ""
+    )
+    
+  } else {
+    
+    value_lines <- c(
+      paste0(
+        "    const ",
+        raw_variable,
+        " = ",
+        data_variable
+      ),
+      filter_lines,
+      paste0(
+        "        .flatMap(row => [",
+        selected_column_js,
+        "].map(column => row[column]))"
+      ),
+      paste0(
+        "        .reduce((sum, value) => ",
+        "sum + (Number(value) || 0), 0);"
+      ),
+      ""
+    )
+  }
+  
+  if (comma_separator) {
+    
+    formatting_lines <- c(
+      paste0(
+        "    const ",
+        headline_variable,
+        " = ",
+        raw_variable,
+        '.toLocaleString("en-GB", {'
+      ),
+      paste0(
+        "        minimumFractionDigits: ",
+        decimal_places,
+        ","
+      ),
+      paste0(
+        "        maximumFractionDigits: ",
+        decimal_places
+      ),
+      "    });"
+    )
+    
+  } else if (decimal_places > 0) {
+    
+    formatting_lines <- paste0(
+      "    const ",
+      headline_variable,
+      " = ",
+      raw_variable,
+      ".toFixed(",
+      decimal_places,
+      ");"
+    )
+    
+  } else {
+    
+    formatting_lines <- paste0(
+      "    const ",
+      headline_variable,
+      " = ",
+      raw_variable,
+      ";"
+    )
+  }
+  
+  insertion_lines <- c(
+    formatting_lines,
     paste0(
       '    insertValue("',
       element_id,
       '", ',
-      variable_name,
+      headline_variable,
       ");"
     ),
     "",
     ""
   )
   
+  replacement <- c(
+    js_lines[current_marker],
+    "",
+    load_lines,
+    value_lines,
+    insertion_lines
+  )
+  
   updated_js <- c(
     if (current_marker > 1) {
-      js_lines[seq_len(current_marker - 1)]
+      js_lines[
+        seq_len(current_marker - 1)
+      ]
     } else {
       character()
     },

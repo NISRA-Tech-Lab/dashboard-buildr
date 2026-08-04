@@ -3028,8 +3028,6 @@ server <- function(input, output, session) {
               return()
             }
             
-            card_value <- stored_calculation$raw_value
-            
             unit <- input[[
               paste0(
                 "card_",
@@ -3084,7 +3082,7 @@ server <- function(input, output, session) {
                 update_homepage_card_value_js(
                   project_root = folder(),
                   card_number = current_card,
-                  value = card_value
+                  calculation = stored_calculation
                 )
                 
                 update_homepage_card_link(
@@ -3437,7 +3435,7 @@ server <- function(input, output, session) {
             filter_definition$input_id
           ]]
         } else {
-          filter_definition$choices
+          character()
         }
         
         selectizeInput(
@@ -3467,12 +3465,7 @@ server <- function(input, output, session) {
         data_definition$pivot_columns
       )
     } else {
-      data_definition$pivot_columns[1]
-    }
-    
-    if (length(selected_pivot_columns) == 0) {
-      selected_pivot_columns <-
-        data_definition$pivot_columns[1]
+      character()
     }
     
     tagList(
@@ -3666,9 +3659,35 @@ server <- function(input, output, session) {
         return()
       }
       
+      filter_selections <- calculation_filter_selections()
+      
+      js_filters <- list()
+      
+      for (
+        filter_definition in
+        data_definition$row_filters
+      ) {
+        
+        selected_values <- filter_selections[[
+          filter_definition$input_id
+        ]]
+        
+        if (
+          !is.null(selected_values) &&
+          length(selected_values) > 0
+        ) {
+          js_filters[[
+            filter_definition$column
+          ]] <- as.character(
+            selected_values
+          )
+        }
+      }
+      
       stored_calculation <- list(
         matrix = data_definition$matrix,
-        filters = calculation_filter_selections(),
+        filters = filter_selections,
+        js_filters = js_filters,
         selected_columns = as.character(
           selected_columns
         ),
