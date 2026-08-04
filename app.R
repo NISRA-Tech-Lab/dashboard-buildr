@@ -2505,22 +2505,26 @@ server <- function(input, output, session) {
     
     req(folder())
     
-    notification_id <- showNotification(
-      "Clearing homepage content...",
-      type = "message",
-      duration = NULL,
-      closeButton = FALSE
-    )
-    
-    result <- tryCatch(
+    tryCatch(
       {
         clear_homepage_files(
           project_root = folder()
         )
+        
+        updateTextInput(
+          session = session,
+          inputId = "homepage_strapline",
+          value = ""
+        )
+        
+        removeModal()
+        
+        showNotification(
+          "Homepage content cleared.",
+          type = "message"
+        )
       },
       error = function(error) {
-        removeNotification(notification_id)
-        
         showNotification(
           paste(
             "Homepage content could not be cleared:",
@@ -2529,21 +2533,7 @@ server <- function(input, output, session) {
           type = "error",
           duration = NULL
         )
-        
-        NULL
       }
-    )
-    
-    if (is.null(result)) {
-      return()
-    }
-    
-    removeNotification(notification_id)
-    removeModal()
-    
-    showNotification(
-      "Homepage content cleared.",
-      type = "message"
     )
   })
   
@@ -2612,6 +2602,25 @@ server <- function(input, output, session) {
     }
     
   }, ignoreInit = TRUE)
+  
+  observe({
+    req(folder())
+    
+    strapline <- tryCatch(
+      read_homepage_strapline(
+        project_root = folder()
+      ),
+      error = function(error) {
+        ""
+      }
+    )
+    
+    updateTextInput(
+      session = session,
+      inputId = "homepage_strapline",
+      value = strapline
+    )
+  })
   
   ## Save number of homepage cards ####
   
@@ -2937,6 +2946,8 @@ server <- function(input, output, session) {
       )
     )
   })
+  
+  
   
   
 }

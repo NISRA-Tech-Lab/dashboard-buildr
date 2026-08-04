@@ -1065,3 +1065,67 @@ update_homepage_js_card_sections <- function(
   
   invisible(js_path)
 }
+
+read_homepage_strapline <- function(project_root) {
+  
+  index_html_path <- file.path(
+    project_root,
+    "index.html"
+  )
+  
+  if (!file.exists(index_html_path)) {
+    return("")
+  }
+  
+  html_lines <- readLines(
+    index_html_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  start_line <- grep(
+    'class=["\'][^"\']*\\bcurrent-page\\b',
+    html_lines,
+    perl = TRUE
+  )
+  
+  if (length(start_line) != 1) {
+    return("")
+  }
+  
+  end_line <- find_closing_div(
+    html_lines,
+    start_line
+  )
+  
+  html <- paste(
+    html_lines[start_line:end_line],
+    collapse = "\n"
+  )
+  
+  html <- sub(
+    "^.*?<div\\b[^>]*>",
+    "",
+    html,
+    perl = TRUE
+  )
+  
+  html <- sub(
+    "</div>.*$",
+    "",
+    html,
+    perl = TRUE
+  )
+  
+  html <- trimws(html)
+  
+  if (!nzchar(html)) {
+    return("")
+  }
+  
+  xml2::xml_text(
+    xml2::read_html(
+      paste0("<div>", html, "</div>")
+    )
+  )
+}
