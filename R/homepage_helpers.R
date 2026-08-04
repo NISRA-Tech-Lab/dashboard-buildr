@@ -1777,7 +1777,40 @@ update_homepage_card_value_js <- function(
     collapse = ", "
   )
   
-  if (length(selected_columns) == 1) {
+  single_row <- all(
+    vapply(
+      js_filters,
+      length,
+      integer(1)
+    ) == 1L
+  )
+  
+  if (
+    length(selected_columns) == 1 &&
+    single_row
+  ) {
+    
+    selected_column <- javascript_string(
+      selected_columns[[1]]
+    )
+    
+    value_lines <- c(
+      paste0(
+        "    const ",
+        raw_variable,
+        " = ",
+        data_variable
+      ),
+      filter_lines,
+      paste0(
+        "        .map(col => col[",
+        selected_column,
+        "]);"
+      ),
+      ""
+    )
+    
+  } else if (length(selected_columns) == 1) {
     
     selected_column <- javascript_string(
       selected_columns[[1]]
@@ -1796,10 +1829,7 @@ update_homepage_card_value_js <- function(
         selected_column,
         "])"
       ),
-      paste0(
-        "        .reduce((sum, value) => ",
-        "sum + (Number(value) || 0), 0);"
-      ),
+      "        .reduce((sum, value) => sum + (Number(value) || 0), 0);",
       ""
     )
     
@@ -1818,10 +1848,7 @@ update_homepage_card_value_js <- function(
         selected_column_js,
         "].map(column => row[column]))"
       ),
-      paste0(
-        "        .reduce((sum, value) => ",
-        "sum + (Number(value) || 0), 0);"
-      ),
+      "        .reduce((sum, value) => sum + (Number(value) || 0), 0);",
       ""
     )
   }
