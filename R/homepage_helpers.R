@@ -1673,6 +1673,12 @@ update_homepage_card_value_js <- function(
     calculation$comma_separator
   )
   
+  display_value <- format_card_calculation_value(
+    value = calculation$raw_value,
+    decimal_places = decimal_places,
+    comma_separator = comma_separator
+  )
+  
   js_filters <- calculation$js_filters
   
   if (is.null(js_filters)) {
@@ -1999,6 +2005,10 @@ update_homepage_card_value_js <- function(
   }
   
   insertion_lines <- c(
+    paste0(
+      "    // BuildR display value: ",
+      display_value
+    ),
     formatting_lines,
     paste0(
       '    insertValue("',
@@ -2112,6 +2122,10 @@ read_homepage_card_values <- function(project_root) {
   if (!file.exists(index_html_path)) {
     stop("index.html was not found.")
   }
+  
+  display_values <- read_homepage_card_display_values(
+    project_root
+  )
   
   html_lines <- readLines(
     index_html_path,
@@ -2314,10 +2328,98 @@ read_homepage_card_values <- function(project_root) {
       
       list(
         top_line = top_line,
+        value = if (
+          card_number <= length(display_values)
+        ) {
+          display_values[card_number]
+        } else {
+          ""
+        },
         unit = unit,
         bottom_line = bottom_line,
         page_href = page_href
       )
     }
   )
+}
+
+read_homepage_card_display_values <- function(project_root) {
+  
+  js_path <- file.path(
+    project_root,
+    "src",
+    "index.js"
+  )
+  
+  if (!file.exists(js_path)) {
+    return(character())
+  }
+  
+  js_lines <- readLines(
+    js_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  card_markers <- grep(
+    "^\\s*//\\s*Content for card\\s+[0-9]+\\s*$",
+    js_lines
+  )
+  
+  if (length(card_markers) == 0) {
+    return(character())
+  }
+  
+  closing_lines <- grep(
+    "^\\s*\\}\\)\\s*;?\\s*$",
+    js_lines
+  )
+  
+  if (length(closing_lines) == 0) {
+    return(character())
+  }
+  
+  event_end <- tail(
+    closing_lines,
+    1
+  )
+  
+  values <- character(
+    length(card_markers)
+  )
+  
+  for (i in seq_along(card_markers)) {
+    
+    section_start <- card_markers[i]
+    
+    section_end <- if (i < length(card_markers)) {
+      card_markers[i + 1] - 1
+    } else {
+      event_end - 1
+    }
+    
+    section <- js_lines[
+      section_start:section_end
+    ]
+    
+    value_line <- grep(
+      "^\\s*//\\s*BuildR display value:",
+      section,
+      value = TRUE
+    )
+    
+    if (length(value_line) == 1) {
+      values[i] <- trimws(
+        sub(
+          "^\\s*//\\s*BuildR display value:\\s*",
+          "",
+          value_line
+        )
+      )
+    } else {
+      values[i] <- ""
+    }
+  }
+  
+  values
 }

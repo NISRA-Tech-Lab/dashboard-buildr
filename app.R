@@ -2793,6 +2793,7 @@ server <- function(input, output, session) {
           } else {
             list(
               top_line = "",
+              value = "",
               unit = "",
               bottom_line = "",
               page_href = ""
@@ -2947,7 +2948,7 @@ server <- function(input, output, session) {
                           ),
                           type = "text",
                           class = "form-control",
-                          value = "",
+                          value = current_values$value,
                           readonly = "readonly",
                           placeholder = "No value calculated"
                         ),
