@@ -4039,6 +4039,8 @@ server <- function(input, output, session) {
   
   page_card_editor_count <- reactiveVal(0)
   
+  page_chart_editor_count <- reactiveVal(2)
+  
   page_card_values <- reactiveVal(
     list()
   )
@@ -4198,6 +4200,56 @@ server <- function(input, output, session) {
       tags$div(
         style = "margin-top: 20px;",
         uiOutput("page_card_editors")
+      ),
+      
+      tags$hr(),
+      
+      h3("Edit charts"),
+      
+      tags$p(
+        paste(
+          "Add up to three chart cards to this page.",
+          "Each chart can be configured separately below."
+        )
+      ),
+      
+      tags$div(
+        style = paste(
+          "display: flex;",
+          "align-items: flex-end;",
+          "gap: 10px;",
+          "max-width: 360px;"
+        ),
+        
+        tags$div(
+          style = "flex: 1;",
+          
+          numericInput(
+            inputId = "page_design_chart_count",
+            label = "Number of charts",
+            value = 2,
+            min = 0,
+            max = 3,
+            step = 1,
+            width = "100%"
+          )
+        ),
+        
+        tags$div(
+          style = "margin-bottom: 15px;",
+          
+          actionButton(
+            inputId = "save_page_design_chart_count",
+            label = "Save",
+            icon = icon("save"),
+            class = "btn-primary"
+          )
+        )
+      ),
+      
+      tags$div(
+        style = "margin-top: 20px;",
+        uiOutput("page_chart_editors")
       )
     )
   })
@@ -4813,6 +4865,237 @@ server <- function(input, output, session) {
           ignoreInit = TRUE
         )
       })
+    }
+  )
+  
+  ### Render the chart accordions ####
+  output$page_chart_editors <- renderUI({
+    
+    req(selected_page_design())
+    
+    chart_count <- page_chart_editor_count()
+    
+    if (
+      length(chart_count) != 1 ||
+      is.na(chart_count) ||
+      chart_count < 1
+    ) {
+      return(
+        tags$em(
+          "No charts have been added to this page."
+        )
+      )
+    }
+    
+    accordion_id <- "page-chart-accordion"
+    
+    tags$div(
+      id = accordion_id,
+      class = "panel-group",
+      role = "tablist",
+      
+      lapply(
+        seq_len(chart_count),
+        function(chart_number) {
+          
+          collapse_id <- paste0(
+            "page-chart-collapse-",
+            chart_number
+          )
+          
+          heading_id <- paste0(
+            "page-chart-heading-",
+            chart_number
+          )
+          
+          is_open <- chart_number == 1
+          
+          tags$div(
+            class = "panel panel-default",
+            
+            tags$div(
+              id = heading_id,
+              class = "panel-heading",
+              role = "tab",
+              
+              tags$h4(
+                class = "panel-title",
+                
+                tags$a(
+                  class = if (is_open) {
+                    ""
+                  } else {
+                    "collapsed"
+                  },
+                  
+                  href = "javascript:void(0);",
+                  
+                  `data-toggle` = "collapse",
+                  
+                  `data-parent` = paste0(
+                    "#",
+                    accordion_id
+                  ),
+                  
+                  `data-target` = paste0(
+                    "#",
+                    collapse_id
+                  ),
+                  
+                  `aria-expanded` = if (is_open) {
+                    "true"
+                  } else {
+                    "false"
+                  },
+                  
+                  `aria-controls` = collapse_id,
+                  
+                  paste(
+                    "Chart",
+                    chart_number
+                  ),
+                  
+                  tags$span(
+                    class = "pull-right",
+                    icon("chevron-down")
+                  )
+                )
+              )
+            ),
+            
+            tags$div(
+              id = collapse_id,
+              
+              class = paste(
+                "panel-collapse collapse",
+                if (is_open) {
+                  "in"
+                } else {
+                  ""
+                }
+              ),
+              
+              role = "tabpanel",
+              
+              `aria-labelledby` = heading_id,
+              
+              tags$div(
+                class = "panel-body",
+                
+                tags$div(
+                  class = "alert alert-info",
+                  
+                  tags$p(
+                    style = "margin-bottom: 0;",
+                    
+                    paste(
+                      "Configure the chart title, type and data.",
+                      "The chart preview and detailed data options",
+                      "will be added in the next stage."
+                    )
+                  )
+                ),
+                
+                textInput(
+                  inputId = paste0(
+                    "page_chart_",
+                    chart_number,
+                    "_title"
+                  ),
+                  label = "Chart title",
+                  value = "",
+                  width = "100%",
+                  placeholder = "Enter a clear chart title"
+                ),
+                
+                selectInput(
+                  inputId = paste0(
+                    "page_chart_",
+                    chart_number,
+                    "_type"
+                  ),
+                  label = "Chart type",
+                  choices = c(
+                    "Select a chart type" = "",
+                    "Line chart" = "line",
+                    "Bar chart" = "bar"
+                  ),
+                  selected = "",
+                  width = "100%"
+                ),
+                
+                selectInput(
+                  inputId = paste0(
+                    "page_chart_",
+                    chart_number,
+                    "_matrix"
+                  ),
+                  label = "Data Portal table",
+                  choices = c(
+                    "Select data" = ""
+                  ),
+                  selected = "",
+                  width = "100%"
+                ),
+                
+                tags$div(
+                  class = "well well-sm",
+                  
+                  tags$strong("Chart preview"),
+                  
+                  tags$p(
+                    style = paste(
+                      "margin-top: 8px;",
+                      "margin-bottom: 0;"
+                    ),
+                    
+                    "A chart preview will appear here."
+                  )
+                ),
+                
+                actionButton(
+                  inputId = paste0(
+                    "save_page_chart_",
+                    chart_number
+                  ),
+                  label = "Save chart changes",
+                  icon = icon("save"),
+                  class = "btn-primary"
+                )
+              )
+            )
+          )
+        }
+      )
+    )
+  })
+  
+  ## Temporary count button observer ####
+  observeEvent(
+    input$save_page_design_chart_count,
+    {
+      
+      requested_count <- as.integer(
+        input$page_design_chart_count
+      )
+      
+      if (
+        length(requested_count) != 1 ||
+        is.na(requested_count) ||
+        requested_count < 0 ||
+        requested_count > 3
+      ) {
+        showNotification(
+          "Choose between 0 and 3 charts.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      page_chart_editor_count(
+        requested_count
+      )
     }
   )
   
