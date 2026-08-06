@@ -4041,6 +4041,10 @@ server <- function(input, output, session) {
   
   page_chart_editor_count <- reactiveVal(2)
   
+  page_chart_values <- reactiveVal(
+    list()
+  )
+  
   page_card_values <- reactiveVal(
     list()
   )
@@ -4341,6 +4345,30 @@ server <- function(input, output, session) {
       session = session,
       inputId = "page_design_chart_count",
       value = chart_count
+    )
+    
+    chart_values <- tryCatch(
+      read_page_chart_titles(
+        project_root = folder(),
+        page_href = selected_page_design()
+      ),
+      error = function(error) {
+        
+        showNotification(
+          paste(
+            "Existing chart titles could not be read:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+        
+        list()
+      }
+    )
+    
+    page_chart_values(
+      chart_values
     )
   })
   
@@ -4904,6 +4932,8 @@ server <- function(input, output, session) {
     
     chart_count <- page_chart_editor_count()
     
+    chart_values <- page_chart_values()
+    
     if (
       length(chart_count) != 1 ||
       is.na(chart_count) ||
@@ -4926,6 +4956,25 @@ server <- function(input, output, session) {
       lapply(
         seq_len(chart_count),
         function(chart_number) {
+          
+          current_title <- if (
+            chart_number <= length(chart_values)
+          ) {
+            chart_values[[chart_number]]
+          } else {
+            ""
+          }
+          
+          if (
+            is.null(current_title) ||
+            length(current_title) == 0
+          ) {
+            current_title <- ""
+          }
+          
+          current_title <- as.character(
+            current_title
+          )[1]
           
           collapse_id <- paste0(
             "page-chart-collapse-",
@@ -5032,9 +5081,22 @@ server <- function(input, output, session) {
                     "_title"
                   ),
                   label = "Chart title",
-                  value = "",
+                  value = current_title,
                   width = "100%",
                   placeholder = "Enter a clear chart title"
+                ),
+                
+                tags$small(
+                  class = "help-block",
+                  style = "margin-top: -8px;",
+                  
+                  "Dynamic year tags: ",
+                  tags$code("<<latest-year>>"),
+                  ", ",
+                  tags$code("<<last-year>>"),
+                  " and ",
+                  tags$code("<<first-year>>"),
+                  "."
                 ),
                 
                 selectInput(
@@ -5099,7 +5161,91 @@ server <- function(input, output, session) {
     )
   })
   
-  ## Temporary count button observer ####
+  ### Add chart-title save observers ####
+  lapply(
+    seq_len(3),
+    function(chart_number) {
+      
+      local({
+        
+        current_chart <- chart_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "save_page_chart_",
+              current_chart
+            )
+          ]],
+          {
+            req(folder())
+            req(selected_page_design())
+            
+            if (
+              current_chart >
+              page_chart_editor_count()
+            ) {
+              return()
+            }
+            
+            chart_title <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_title"
+              )
+            ]]
+            
+            if (is.null(chart_title)) {
+              chart_title <- ""
+            }
+            
+            tryCatch(
+              {
+                update_page_chart_title(
+                  project_root = folder(),
+                  page_href = selected_page_design(),
+                  chart_number = current_chart,
+                  chart_title = chart_title
+                )
+                
+                refreshed_titles <- read_page_chart_titles(
+                  project_root = folder(),
+                  page_href = selected_page_design()
+                )
+                
+                page_chart_values(
+                  refreshed_titles
+                )
+                
+                showNotification(
+                  paste0(
+                    "Chart ",
+                    current_chart,
+                    " title updated."
+                  ),
+                  type = "message"
+                )
+              },
+              error = function(error) {
+                showNotification(
+                  paste(
+                    "Chart title could not be updated:",
+                    conditionMessage(error)
+                  ),
+                  type = "error",
+                  duration = NULL
+                )
+              }
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
+  
+  ### Temporary count button observer ####
   observeEvent(
     input$save_page_design_chart_count,
     {
@@ -5162,6 +5308,13 @@ server <- function(input, output, session) {
               
               page_chart_editor_count(
                 actual_count
+              )
+              
+              page_chart_values(
+                read_page_chart_titles(
+                  project_root = folder(),
+                  page_href = selected_page_design()
+                )
               )
               
               updateNumericInput(

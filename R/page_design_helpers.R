@@ -1977,6 +1977,269 @@ count_page_charts <- function(
   )
 }
 
+read_page_chart_titles <- function(
+    project_root,
+    page_href
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$html)) {
+    stop(
+      paste0(
+        paths$href,
+        " was not found."
+      )
+    )
+  }
+  
+  html_lines <- readLines(
+    paths$html,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  chart_region <- find_page_chart_cards_region(
+    html_lines
+  )
+  
+  lapply(
+    seq_along(chart_region$chart_starts),
+    function(chart_number) {
+      
+      chart_start <- chart_region$chart_starts[
+        chart_number
+      ]
+      
+      chart_end <- find_closing_div(
+        html_lines,
+        chart_start
+      )
+      
+      header_start <- grep(
+        'class=["\'][^"\']*\\bcard-header\\b',
+        html_lines,
+        perl = TRUE
+      )
+      
+      header_start <- header_start[
+        header_start >= chart_start &
+          header_start <= chart_end
+      ]
+      
+      if (length(header_start) == 0) {
+        return("")
+      }
+      
+      if (length(header_start) != 1) {
+        stop(
+          paste0(
+            "Could not uniquely identify the header for chart ",
+            chart_number,
+            "."
+          )
+        )
+      }
+      
+      header_end <- find_closing_div(
+        html_lines,
+        header_start
+      )
+      
+      header_html <- paste(
+        html_lines[header_start:header_end],
+        collapse = "\n"
+      )
+      
+      header_html <- sub(
+        "^.*?<div\\b[^>]*>",
+        "",
+        header_html,
+        perl = TRUE
+      )
+      
+      header_html <- sub(
+        "</div>\\s*$",
+        "",
+        header_html,
+        perl = TRUE
+      )
+      
+      # This converts year spans back to:
+      # <<latest-year>>, <<last-year>>, <<first-year>>
+      html_fragment_to_text(
+        header_html
+      )
+    }
+  )
+}
+
+
+update_page_chart_title <- function(
+    project_root,
+    page_href,
+    chart_number,
+    chart_title
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$html)) {
+    stop(
+      paste0(
+        paths$href,
+        " was not found."
+      )
+    )
+  }
+  
+  chart_number <- as.integer(
+    chart_number
+  )
+  
+  if (
+    length(chart_number) != 1 ||
+    is.na(chart_number) ||
+    chart_number < 1 ||
+    chart_number > 3
+  ) {
+    stop("A valid chart number is required.")
+  }
+  
+  html_lines <- readLines(
+    paths$html,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  chart_region <- find_page_chart_cards_region(
+    html_lines
+  )
+  
+  if (chart_number > length(chart_region$chart_starts)) {
+    stop(
+      paste0(
+        "Chart ",
+        chart_number,
+        " was not found."
+      )
+    )
+  }
+  
+  chart_start <- chart_region$chart_starts[
+    chart_number
+  ]
+  
+  chart_end <- find_closing_div(
+    html_lines,
+    chart_start
+  )
+  
+  header_start <- grep(
+    'class=["\'][^"\']*\\bcard-header\\b',
+    html_lines,
+    perl = TRUE
+  )
+  
+  header_start <- header_start[
+    header_start >= chart_start &
+      header_start <= chart_end
+  ]
+  
+  if (length(header_start) != 1) {
+    stop(
+      paste0(
+        "Could not uniquely identify the header for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  header_end <- find_closing_div(
+    html_lines,
+    header_start
+  )
+  
+  parsed_title <- parse_homepage_year_tags(
+    chart_title
+  )
+  
+  opening_line <- sub(
+    "^(.*?<div\\b[^>]*>).*",
+    "\\1",
+    html_lines[header_start],
+    perl = TRUE
+  )
+  
+  header_indent <- sub(
+    "^(\\s*).*",
+    "\\1",
+    html_lines[header_start]
+  )
+  
+  content_indent <- paste0(
+    header_indent,
+    "    "
+  )
+  
+  replacement <- if (nzchar(trimws(chart_title))) {
+    c(
+      opening_line,
+      paste0(
+        content_indent,
+        parsed_title
+      ),
+      paste0(
+        header_indent,
+        "</div>"
+      )
+    )
+  } else {
+    paste0(
+      opening_line,
+      "</div>"
+    )
+  }
+  
+  updated_html <- c(
+    if (header_start > 1) {
+      html_lines[
+        seq_len(header_start - 1)
+      ]
+    } else {
+      character()
+    },
+    
+    replacement,
+    
+    if (header_end < length(html_lines)) {
+      html_lines[
+        seq.int(
+          header_end + 1,
+          length(html_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_html,
+    paths$html,
+    useBytes = TRUE
+  )
+  
+  invisible(paths$html)
+}
+
 clear_page_design_files <- function(
     project_root,
     page_href
