@@ -4228,7 +4228,7 @@ server <- function(input, output, session) {
             inputId = "page_design_chart_count",
             label = "Number of charts",
             value = 2,
-            min = 0,
+            min = 1,
             max = 3,
             step = 1,
             width = "100%"
@@ -4313,6 +4313,35 @@ server <- function(input, output, session) {
         value = length(values)
       )
     }
+    
+    chart_count <- tryCatch(
+      count_page_charts(
+        project_root = folder(),
+        page_href = selected_page_design()
+      ),
+      error = function(error) {
+        showNotification(
+          paste(
+            "Existing page charts could not be read:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+        
+        0L
+      }
+    )
+    
+    page_chart_editor_count(
+      chart_count
+    )
+    
+    updateNumericInput(
+      session = session,
+      inputId = "page_design_chart_count",
+      value = chart_count
+    )
   })
   
   ### Clear and strapline observers ####
@@ -5093,8 +5122,85 @@ server <- function(input, output, session) {
         return()
       }
       
-      page_chart_editor_count(
-        requested_count
+      observeEvent(
+        input$save_page_design_chart_count,
+        {
+          
+          req(folder())
+          req(selected_page_design())
+          
+          requested_count <- as.integer(
+            input$page_design_chart_count
+          )
+          
+          if (
+            length(requested_count) != 1 ||
+            is.na(requested_count) ||
+            requested_count < 0 ||
+            requested_count > 3
+          ) {
+            showNotification(
+              "Choose between 0 and 3 charts.",
+              type = "error"
+            )
+            
+            return()
+          }
+          
+          tryCatch(
+            {
+              update_page_chart_count(
+                project_root = folder(),
+                page_href = selected_page_design(),
+                chart_count = requested_count
+              )
+              
+              actual_count <- count_page_charts(
+                project_root = folder(),
+                page_href = selected_page_design()
+              )
+              
+              page_chart_editor_count(
+                actual_count
+              )
+              
+              updateNumericInput(
+                session = session,
+                inputId = "page_design_chart_count",
+                value = actual_count
+              )
+              
+              page_design_version(
+                page_design_version() + 1
+              )
+              
+              showNotification(
+                if (actual_count == 1) {
+                  "Page updated to 1 chart."
+                } else {
+                  paste0(
+                    "Page updated to ",
+                    actual_count,
+                    " charts."
+                  )
+                },
+                type = "message"
+              )
+            },
+            error = function(error) {
+              
+              showNotification(
+                paste(
+                  "The page charts could not be updated:",
+                  conditionMessage(error)
+                ),
+                type = "error",
+                duration = NULL
+              )
+            }
+          )
+        },
+        ignoreInit = TRUE
       )
     }
   )

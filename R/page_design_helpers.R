@@ -1766,6 +1766,217 @@ clear_page_js_chart_content <- function(
   )
 }
 
+find_page_chart_cards_region <- function(html_lines) {
+  
+  marker_start <- grep(
+    "^\\s*<!--\\s*Chart cards start\\s*-->\\s*$",
+    html_lines
+  )
+  
+  marker_end <- grep(
+    "^\\s*<!--\\s*Chart cards end\\s*-->\\s*$",
+    html_lines
+  )
+  
+  if (length(marker_start) != 1) {
+    stop(
+      "Could not uniquely identify '<!-- Chart cards start -->'."
+    )
+  }
+  
+  if (length(marker_end) != 1) {
+    stop(
+      "Could not uniquely identify '<!-- Chart cards end -->'."
+    )
+  }
+  
+  if (marker_end <= marker_start) {
+    stop(
+      "The chart-card end marker occurs before its start marker."
+    )
+  }
+  
+  row_candidates <- grep(
+    paste0(
+      '<div\\b[^>]*class\\s*=\\s*["\']',
+      '[^"\']*\\brow\\b',
+      '[^"\']*["\']'
+    ),
+    html_lines,
+    perl = TRUE
+  )
+  
+  row_candidates <- row_candidates[
+    row_candidates > marker_start &
+      row_candidates < marker_end
+  ]
+  
+  if (length(row_candidates) != 1) {
+    stop(
+      "Could not uniquely identify the chart-card row."
+    )
+  }
+  
+  row_start <- row_candidates[[1]]
+  
+  row_end <- find_closing_div(
+    html_lines,
+    row_start
+  )
+  
+  if (row_end >= marker_end) {
+    stop(
+      "The chart-card row extends beyond its end marker."
+    )
+  }
+  
+  chart_starts <- grep(
+    paste0(
+      '<div\\b[^>]*class\\s*=\\s*["\']',
+      '[^"\']*\\bcol-12\\b',
+      '[^"\']*\\bcol-xl-(4|6|12)\\b',
+      '[^"\']*\\bpy-2\\b',
+      '[^"\']*["\']'
+    ),
+    html_lines,
+    perl = TRUE
+  )
+  
+  chart_starts <- chart_starts[
+    chart_starts > row_start &
+      chart_starts < row_end
+  ]
+  
+  list(
+    marker_start = marker_start,
+    marker_end = marker_end,
+    row_start = row_start,
+    row_end = row_end,
+    chart_starts = chart_starts
+  )
+}
+
+
+page_chart_column_class <- function(chart_count) {
+  
+  chart_count <- as.integer(chart_count)
+  
+  switch(
+    as.character(chart_count),
+    "1" = "col-xl-12",
+    "2" = "col-xl-6",
+    "3" = "col-xl-4",
+    stop("The number of charts must be between 1 and 3.")
+  )
+}
+
+
+set_page_chart_column_width <- function(
+    chart_lines,
+    chart_count
+) {
+  
+  column_class <- page_chart_column_class(
+    chart_count
+  )
+  
+  opening_line <- chart_lines[[1]]
+  
+  if (!grepl("\\bcol-12\\b", opening_line)) {
+    stop(
+      "Could not identify the chart column opening line."
+    )
+  }
+  
+  opening_line <- gsub(
+    "\\bcol-xl-(4|6|12)\\b",
+    column_class,
+    opening_line,
+    perl = TRUE
+  )
+  
+  # Support older blank chart cards that may lack a col-xl-* class.
+  if (!grepl("\\bcol-xl-(4|6|12)\\b", opening_line)) {
+    
+    opening_line <- sub(
+      "\\bcol-12\\b",
+      paste(
+        "col-12",
+        column_class
+      ),
+      opening_line
+    )
+  }
+  
+  chart_lines[[1]] <- opening_line
+  
+  chart_lines
+}
+
+
+blank_page_chart_card <- function(
+    chart_number,
+    chart_count
+) {
+  
+  column_class <- page_chart_column_class(
+    chart_count
+  )
+  
+  c(
+    paste0(
+      '            <div class="col-12 ',
+      column_class,
+      ' py-2">'
+    ),
+    '                <div class="card h-100">',
+    paste0(
+      '                    <div id="chart-',
+      chart_number,
+      '-capture">'
+    ),
+    '                        <div class="card-header"></div>',
+    '                        <div class="card-body d-flex flex-column justify-content-center"></div>',
+    '                    </div>',
+    '                    <div class="card-footer"></div>',
+    '                </div>',
+    '            </div>'
+  )
+}
+
+
+count_page_charts <- function(
+    project_root,
+    page_href
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$html)) {
+    stop(
+      paste0(
+        paths$href,
+        " was not found."
+      )
+    )
+  }
+  
+  html_lines <- readLines(
+    paths$html,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  length(
+    find_page_chart_cards_region(
+      html_lines
+    )$chart_starts
+  )
+}
+
 clear_page_design_files <- function(
     project_root,
     page_href
@@ -2057,4 +2268,416 @@ clear_div_contents_by_line <- function(
       character()
     }
   )
+}
+
+update_page_js_chart_sections <- function(
+    project_root,
+    page_href,
+    chart_count,
+    preserve_existing = TRUE
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$js)) {
+    stop(
+      paste0(
+        paths$js_filename,
+        " was not found."
+      )
+    )
+  }
+  
+  chart_count <- as.integer(chart_count)
+  
+  if (
+    length(chart_count) != 1 ||
+    is.na(chart_count) ||
+    chart_count < 0 ||
+    chart_count > 3
+  ) {
+    stop("The number of charts must be between 0 and 3.")
+  }
+  
+  js_lines <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  region_start <- grep(
+    "^\\s*//\\s*Insert chart content below\\s*$",
+    js_lines
+  )
+  
+  region_end <- grep(
+    "^\\s*//\\s*End chart content\\s*$",
+    js_lines
+  )
+  
+  if (length(region_start) != 1) {
+    stop(
+      paste0(
+        "Could not uniquely identify ",
+        "'// Insert chart content below' in ",
+        paths$js_filename,
+        "."
+      )
+    )
+  }
+  
+  if (length(region_end) != 1) {
+    stop(
+      paste0(
+        "Could not uniquely identify ",
+        "'// End chart content' in ",
+        paths$js_filename,
+        "."
+      )
+    )
+  }
+  
+  if (region_end <= region_start) {
+    stop(
+      "The chart-content end marker occurs before its start marker."
+    )
+  }
+  
+  existing_region <- if (
+    region_end > region_start + 1
+  ) {
+    js_lines[
+      seq.int(
+        region_start + 1,
+        region_end - 1
+      )
+    ]
+  } else {
+    character()
+  }
+  
+  existing_sections <- list()
+  
+  if (isTRUE(preserve_existing)) {
+    
+    chart_markers <- grep(
+      "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
+      existing_region
+    )
+    
+    if (length(chart_markers) > 0) {
+      
+      for (i in seq_along(chart_markers)) {
+        
+        section_start <- chart_markers[[i]]
+        
+        section_end <- if (
+          i < length(chart_markers)
+        ) {
+          chart_markers[[i + 1]] - 1
+        } else {
+          length(existing_region)
+        }
+        
+        section <- existing_region[
+          section_start:section_end
+        ]
+        
+        while (
+          length(section) > 1 &&
+          !nzchar(trimws(tail(section, 1)))
+        ) {
+          section <- head(
+            section,
+            -1
+          )
+        }
+        
+        existing_sections[[i]] <- section
+      }
+    }
+  }
+  
+  updated_region <- character()
+  
+  if (chart_count > 0) {
+    
+    for (chart_number in seq_len(chart_count)) {
+      
+      if (
+        isTRUE(preserve_existing) &&
+        chart_number <= length(existing_sections)
+      ) {
+        
+        section <- existing_sections[[
+          chart_number
+        ]]
+        
+        section[[1]] <- paste0(
+          "    // Content for chart ",
+          chart_number
+        )
+        
+      } else {
+        
+        section <- paste0(
+          "    // Content for chart ",
+          chart_number
+        )
+      }
+      
+      updated_region <- c(
+        updated_region,
+        section,
+        "",
+        ""
+      )
+    }
+  }
+  
+  # Avoid an excessive group of blank lines before the end marker.
+  while (
+    length(updated_region) > 0 &&
+    identical(tail(updated_region, 1), "")
+  ) {
+    updated_region <- head(
+      updated_region,
+      -1
+    )
+  }
+  
+  updated_js <- c(
+    js_lines[
+      seq_len(region_start)
+    ],
+    "",
+    updated_region,
+    "",
+    js_lines[
+      region_end:length(js_lines)
+    ]
+  )
+  
+  writeLines(
+    updated_js,
+    paths$js,
+    useBytes = TRUE
+  )
+  
+  invisible(paths$js)
+}
+
+update_page_chart_count <- function(
+    project_root,
+    page_href,
+    chart_count
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$html)) {
+    stop(
+      paste0(
+        paths$href,
+        " was not found."
+      )
+    )
+  }
+  
+  if (!file.exists(paths$js)) {
+    stop(
+      paste0(
+        paths$js_filename,
+        " was not found."
+      )
+    )
+  }
+  
+  chart_count <- as.integer(chart_count)
+  
+  if (
+    length(chart_count) != 1 ||
+    is.na(chart_count) ||
+    chart_count < 0 ||
+    chart_count > 3
+  ) {
+    stop("The number of charts must be between 0 and 3.")
+  }
+  
+  original_html <- readLines(
+    paths$html,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  original_js <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  chart_region <- find_page_chart_cards_region(
+    original_html
+  )
+  
+  existing_charts <- lapply(
+    chart_region$chart_starts,
+    function(chart_start) {
+      
+      chart_end <- find_closing_div(
+        original_html,
+        chart_start
+      )
+      
+      original_html[
+        chart_start:chart_end
+      ]
+    }
+  )
+  
+  charts_to_keep <- min(
+    length(existing_charts),
+    chart_count
+  )
+  
+  updated_charts <- if (charts_to_keep > 0) {
+    existing_charts[
+      seq_len(charts_to_keep)
+    ]
+  } else {
+    list()
+  }
+  
+  if (chart_count > charts_to_keep) {
+    
+    for (
+      chart_number in
+      seq.int(
+        charts_to_keep + 1,
+        chart_count
+      )
+    ) {
+      
+      updated_charts[[chart_number]] <-
+        blank_page_chart_card(
+          chart_number = chart_number,
+          chart_count = chart_count
+        )
+    }
+  }
+  
+  # Every retained chart also needs the width appropriate
+  # to the newly selected total.
+  if (chart_count > 0) {
+    
+    updated_charts <- lapply(
+      updated_charts,
+      set_page_chart_column_width,
+      chart_count = chart_count
+    )
+  }
+  
+  row_indent <- sub(
+    "^(\\s*).*",
+    "\\1",
+    original_html[
+      chart_region$row_start
+    ]
+  )
+  
+  row_opening <- original_html[
+    chart_region$row_start
+  ]
+  
+  row_closing <- original_html[
+    chart_region$row_end
+  ]
+  
+  replacement_row <- c(
+    row_opening,
+    if (chart_count > 0) {
+      unlist(
+        updated_charts,
+        use.names = FALSE
+      )
+    } else {
+      character()
+    },
+    row_closing
+  )
+  
+  updated_html <- c(
+    if (chart_region$row_start > 1) {
+      original_html[
+        seq_len(
+          chart_region$row_start - 1
+        )
+      ]
+    } else {
+      character()
+    },
+    
+    replacement_row,
+    
+    if (
+      chart_region$row_end <
+      length(original_html)
+    ) {
+      original_html[
+        seq.int(
+          chart_region$row_end + 1,
+          length(original_html)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  tryCatch(
+    {
+      writeLines(
+        updated_html,
+        paths$html,
+        useBytes = TRUE
+      )
+      
+      update_page_js_chart_sections(
+        project_root = project_root,
+        page_href = page_href,
+        chart_count = chart_count,
+        preserve_existing = TRUE
+      )
+    },
+    error = function(error) {
+      
+      writeLines(
+        original_html,
+        paths$html,
+        useBytes = TRUE
+      )
+      
+      writeLines(
+        original_js,
+        paths$js,
+        useBytes = TRUE
+      )
+      
+      stop(
+        paste(
+          "Page chart changes were restored after an error:",
+          conditionMessage(error)
+        ),
+        call. = FALSE
+      )
+    }
+  )
+  
+  invisible(paths)
 }
