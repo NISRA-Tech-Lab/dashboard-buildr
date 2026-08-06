@@ -482,6 +482,276 @@ update_homepage_strapline <- function(
   invisible(index_html_path)
 }
 
+find_homepage_information_block <- function(html_lines) {
+  
+  heading_line <- grep(
+    "Information about this dashboard",
+    html_lines,
+    fixed = TRUE
+  )
+  
+  if (length(heading_line) != 1) {
+    stop(
+      paste(
+        "Could not uniquely identify the",
+        "Information about this dashboard heading."
+      )
+    )
+  }
+  
+  card_body_lines <- grep(
+    'class=["\'][^"\']*\\bcard-body\\b',
+    html_lines,
+    perl = TRUE
+  )
+  
+  information_body_start <- tail(
+    card_body_lines[
+      card_body_lines <= heading_line
+    ],
+    1
+  )
+  
+  if (length(information_body_start) != 1) {
+    stop(
+      "Could not identify the dashboard information card body."
+    )
+  }
+  
+  information_body_end <- find_closing_div(
+    html_lines,
+    information_body_start
+  )
+  
+  heading_end <- grep(
+    "</h2>",
+    html_lines,
+    fixed = TRUE
+  )
+  
+  heading_end <- heading_end[
+    heading_end >= information_body_start &
+      heading_end <= information_body_end
+  ]
+  
+  if (length(heading_end) != 1) {
+    stop(
+      "Could not identify the end of the dashboard information heading."
+    )
+  }
+  
+  list(
+    body_start = information_body_start,
+    body_end = information_body_end,
+    heading_end = heading_end
+  )
+}
+
+
+read_homepage_information <- function(project_root) {
+  
+  index_html_path <- file.path(
+    project_root,
+    "index.html"
+  )
+  
+  if (!file.exists(index_html_path)) {
+    stop("index.html was not found.")
+  }
+  
+  html_lines <- readLines(
+    index_html_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  information_block <- find_homepage_information_block(
+    html_lines
+  )
+  
+  content_start <- information_block$heading_end + 1
+  content_end <- information_block$body_end - 1
+  
+  if (content_start > content_end) {
+    return("")
+  }
+  
+  content_lines <- html_lines[
+    content_start:content_end
+  ]
+  
+  # Remove blank lines surrounding the saved information.
+  while (
+    length(content_lines) > 0 &&
+    !nzchar(trimws(content_lines[1]))
+  ) {
+    content_lines <- content_lines[-1]
+  }
+  
+  while (
+    length(content_lines) > 0 &&
+    !nzchar(trimws(tail(content_lines, 1)))
+  ) {
+    content_lines <- head(
+      content_lines,
+      -1
+    )
+  }
+  
+  if (length(content_lines) == 0) {
+    return("")
+  }
+  
+  # Remove indentation added when the HTML was written.
+  nonblank_lines <- content_lines[
+    nzchar(trimws(content_lines))
+  ]
+  
+  if (length(nonblank_lines) > 0) {
+    
+    leading_spaces <- nchar(
+      sub(
+        "^(\\s*).*",
+        "\\1",
+        nonblank_lines
+      )
+    )
+    
+    common_indent <- min(
+      leading_spaces
+    )
+    
+    if (common_indent > 0) {
+      content_lines <- vapply(
+        content_lines,
+        function(line) {
+          
+          if (!nzchar(line)) {
+            return("")
+          }
+          
+          substring(
+            line,
+            common_indent + 1
+          )
+        },
+        character(1)
+      )
+    }
+  }
+  
+  paste(
+    content_lines,
+    collapse = "\n"
+  )
+}
+
+
+update_homepage_information <- function(
+    project_root,
+    information_html
+) {
+  
+  index_html_path <- file.path(
+    project_root,
+    "index.html"
+  )
+  
+  if (!file.exists(index_html_path)) {
+    stop("index.html was not found.")
+  }
+  
+  original_lines <- readLines(
+    index_html_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  information_block <- find_homepage_information_block(
+    original_lines
+  )
+  
+  information_html <- gsub(
+    "\r\n?",
+    "\n",
+    as.character(information_html)
+  )
+  
+  information_html <- trimws(
+    information_html
+  )
+  
+  new_content <- character()
+  
+  if (nzchar(information_html)) {
+    
+    supplied_lines <- strsplit(
+      information_html,
+      "\n",
+      fixed = TRUE
+    )[[1]]
+    
+    body_indent <- sub(
+      "^(\\s*).*",
+      "\\1",
+      original_lines[
+        information_block$body_start
+      ]
+    )
+    
+    content_indent <- paste0(
+      body_indent,
+      "    "
+    )
+    
+    new_content <- vapply(
+      supplied_lines,
+      function(line) {
+        
+        if (!nzchar(line)) {
+          return("")
+        }
+        
+        paste0(
+          content_indent,
+          line
+        )
+      },
+      character(1)
+    )
+  }
+  
+  updated_lines <- c(
+    original_lines[
+      seq_len(
+        information_block$heading_end
+      )
+    ],
+    
+    if (length(new_content) > 0) {
+      c(
+        "",
+        new_content
+      )
+    } else {
+      character()
+    },
+    
+    original_lines[
+      information_block$body_end:
+        length(original_lines)
+    ]
+  )
+  
+  writeLines(
+    updated_lines,
+    index_html_path,
+    useBytes = TRUE
+  )
+  
+  invisible(index_html_path)
+}
+
 count_open_divs <- function(line) {
   
   matches <- gregexpr(

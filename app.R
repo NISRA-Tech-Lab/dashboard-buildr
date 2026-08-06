@@ -145,7 +145,40 @@ ui <- fluidPage(
           tags$div(
             style = "margin-top: 20px;",
             uiOutput("homepage_card_editors")
+          ),
+          
+          tags$hr(),
+          
+          h3("Dashboard information"),
+          
+          tags$p(
+            paste(
+              "Enter supporting information about this dashboard.",
+              "You can use HTML for paragraphs, links, lists and other formatting."
+            )
+          ),
+          
+          textAreaInput(
+            inputId = "homepage_dashboard_information",
+            label = "Dashboard information HTML",
+            value = "",
+            rows = 10,
+            width = "100%",
+            resize = "vertical",
+            placeholder = paste0(
+              "<p>This dashboard was built using...</p>\n\n",
+              "<p>Further information is available from ",
+              "<a href=\"https://example.com\">the data source</a>.</p>"
+            )
+          ),
+          
+          actionButton(
+            inputId = "save_homepage_dashboard_information",
+            label = "Save dashboard information",
+            icon = icon("save"),
+            class = "btn-primary"
           )
+          
         ),
         tabPanel("Page design"),
         tabPanel("User notes")
@@ -2515,6 +2548,12 @@ server <- function(input, output, session) {
           value = ""
         )
         
+        updateTextAreaInput(
+          session = session,
+          inputId = "homepage_dashboard_information",
+          value = ""
+        )
+        
         removeModal()
         
         showNotification(
@@ -3814,6 +3853,86 @@ server <- function(input, output, session) {
           "."
         ),
         type = "message"
+      )
+    }
+  )
+  
+  ### Edit information about dashboard ####
+  observe({
+    
+    req(folder())
+    
+    information_html <- tryCatch(
+      read_homepage_information(
+        project_root = folder()
+      ),
+      error = function(error) {
+        showNotification(
+          paste(
+            "Existing dashboard information could not be read:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+        
+        ""
+      }
+    )
+    
+    updateTextAreaInput(
+      session = session,
+      inputId = "homepage_dashboard_information",
+      value = information_html
+    )
+  })
+  
+  observeEvent(
+    input$save_homepage_dashboard_information,
+    {
+      
+      req(folder())
+      
+      information_html <- input$homepage_dashboard_information
+      
+      if (is.null(information_html)) {
+        information_html <- ""
+      }
+      
+      tryCatch(
+        {
+          update_homepage_information(
+            project_root = folder(),
+            information_html = information_html
+          )
+          
+          # Reload the saved HTML into the textarea so the UI
+          # remains aligned with index.html.
+          saved_information <- read_homepage_information(
+            project_root = folder()
+          )
+          
+          updateTextAreaInput(
+            session = session,
+            inputId = "homepage_dashboard_information",
+            value = saved_information
+          )
+          
+          showNotification(
+            "Dashboard information updated.",
+            type = "message"
+          )
+        },
+        error = function(error) {
+          showNotification(
+            paste(
+              "Dashboard information could not be updated:",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = NULL
+          )
+        }
       )
     }
   )
