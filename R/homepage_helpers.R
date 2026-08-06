@@ -1703,6 +1703,28 @@ update_homepage_card_value_js <- function(
     perl = TRUE
   )
   
+  matrix_load_pattern <- paste0(
+    "^\\s*const\\s+\\[\\s*",
+    matrix,
+    "_data\\s*,\\s*",
+    matrix,
+    "_meta\\s*\\]\\s*=\\s*await\\s+readData\\(",
+    '["\']',
+    matrix,
+    '["\']',
+    "\\);\\s*$"
+  )
+  
+  existing_matrix_loads <- grep(
+    matrix_load_pattern,
+    js_lines,
+    perl = TRUE
+  )
+  
+  matrix_loaded_earlier <- any(
+    existing_matrix_loads < current_marker
+  )
+  
   if (length(current_marker) != 1) {
     stop(
       paste0(
@@ -1767,25 +1789,32 @@ update_homepage_card_value_js <- function(
     "-value"
   )
   
-  load_lines <- c(
-    paste0(
-      "    const [",
-      data_variable,
-      ", ",
-      metadata_variable,
-      '] = await readData("',
-      escape_javascript_string(matrix),
-      '");'
-    ),
-    if (card_number == 1) {
+  load_lines <- if (matrix_loaded_earlier) {
+    
+    character()
+    
+  } else {
+    
+    c(
       paste0(
-        "    updateYearSpans(",
+        "    const [",
         data_variable,
-        ");"
-      )
-    },
-    ""
-  )
+        ", ",
+        metadata_variable,
+        '] = await readData("',
+        escape_javascript_string(matrix),
+        '");'
+      ),
+      if (card_number == 1) {
+        paste0(
+          "    updateYearSpans(",
+          data_variable,
+          ");"
+        )
+      },
+      ""
+    )
+  }
   
   filter_lines <- character()
   
