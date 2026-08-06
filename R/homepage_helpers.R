@@ -2079,6 +2079,8 @@ update_homepage_card_value_js <- function(
         paste0(
           "    updateYearSpans(",
           data_variable,
+          ", ",
+          metadata_variable,
           ");"
         )
       },
