@@ -4274,8 +4274,8 @@ server <- function(input, output, session) {
         
         tags$p(
           paste(
-            "This will clear the page strapline, card content",
-            "and generated card JavaScript."
+            "This will clear the page strapline, headline cards,",
+            "chart cards and their generated JavaScript."
           )
         ),
         
@@ -4312,6 +4312,12 @@ server <- function(input, output, session) {
           project_root = folder(),
           page_href = selected_page_design()
         )
+        
+        for (card_number in seq_len(6)) {
+          page_card_calculations[[
+            as.character(card_number)
+          ]] <- NULL
+        }
         
         updateTextInput(
           session = session,

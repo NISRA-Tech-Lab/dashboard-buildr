@@ -1713,6 +1713,57 @@ update_page_card_value_js <- function(
   invisible(js_path)
 }
 
+clear_page_js_chart_content <- function(
+    js_lines,
+    js_filename
+) {
+  
+  chart_start <- grep(
+    "^\\s*//\\s*Insert chart content below\\s*$",
+    js_lines
+  )
+  
+  if (length(chart_start) != 1) {
+    stop(
+      paste0(
+        "Could not uniquely identify ",
+        "'// Insert chart content below' in ",
+        js_filename,
+        "."
+      )
+    )
+  }
+  
+  chart_end <- grep(
+    "^\\s*//\\s*End chart content\\s*$",
+    js_lines
+  )
+  
+  if (length(chart_end) != 1) {
+    stop(
+      paste0(
+        "Could not uniquely identify ",
+        "'// End chart content' in ",
+        js_filename,
+        "."
+      )
+    )
+  }
+  
+  if (chart_end <= chart_start) {
+    stop(
+      "The chart-content end marker occurs before its start marker."
+    )
+  }
+  
+  c(
+    js_lines[seq_len(chart_start)],
+    "",
+    "",
+    js_lines[chart_end:length(js_lines)]
+  )
+}
+
 clear_page_design_files <- function(
     project_root,
     page_href
@@ -1722,6 +1773,24 @@ clear_page_design_files <- function(
     project_root,
     page_href
   )
+  
+  if (!file.exists(paths$html)) {
+    stop(
+      paste0(
+        paths$href,
+        " was not found."
+      )
+    )
+  }
+  
+  if (!file.exists(paths$js)) {
+    stop(
+      paste0(
+        paths$js_filename,
+        " was not found."
+      )
+    )
+  }
   
   original_html <- readLines(
     paths$html,
@@ -1735,54 +1804,152 @@ clear_page_design_files <- function(
     encoding = "UTF-8"
   )
   
-  lines <- original_html
+  updated_html <- original_html
   
+  # Clear the page strapline.
   current_page <- grep(
     'class=["\'][^"\']*\\bcurrent-page\\b',
-    lines,
+    updated_html,
     perl = TRUE
   )
   
   if (length(current_page) != 1) {
     stop(
-      "Could not identify the page strapline."
+      "Could not uniquely identify the page strapline."
     )
   }
   
-  lines <- clear_div_contents_by_line(
-    lines,
+  updated_html <- clear_div_contents_by_line(
+    updated_html,
     current_page
   )
   
-  section <- find_page_cards_row(
-    lines
+  # Clear the headline-card bodies.
+  card_section <- find_page_cards_row(
+    updated_html
   )
   
-  body_starts <- grep(
+  card_body_starts <- grep(
     'class=["\'][^"\']*\\bcard-body\\b',
-    lines,
+    updated_html,
     perl = TRUE
   )
   
-  body_starts <- body_starts[
-    body_starts > section$row_start &
-      body_starts < section$row_end
+  card_body_starts <- card_body_starts[
+    card_body_starts > card_section$row_start &
+      card_body_starts < card_section$row_end
   ]
   
+  if (length(card_body_starts) == 0) {
+    stop(
+      "No page headline-card bodies were found."
+    )
+  }
+  
   for (
-    body_start in
-    sort(body_starts, decreasing = TRUE)
+    body_start in sort(
+      card_body_starts,
+      decreasing = TRUE
+    )
   ) {
-    lines <- clear_div_contents_by_line(
-      lines,
+    updated_html <- clear_div_contents_by_line(
+      updated_html,
       body_start
     )
   }
   
+  # Locate the explicitly marked chart-card region.
+  chart_html_start <- grep(
+    "^\\s*<!--\\s*Chart cards start\\s*-->\\s*$",
+    updated_html
+  )
+  
+  chart_html_end <- grep(
+    "^\\s*<!--\\s*Chart cards end\\s*-->\\s*$",
+    updated_html
+  )
+  
+  if (length(chart_html_start) != 1) {
+    stop(
+      paste(
+        "Could not uniquely identify",
+        "'<!-- Chart cards start -->'."
+      )
+    )
+  }
+  
+  if (length(chart_html_end) != 1) {
+    stop(
+      paste(
+        "Could not uniquely identify",
+        "'<!-- Chart cards end -->'."
+      )
+    )
+  }
+  
+  if (chart_html_end <= chart_html_start) {
+    stop(
+      "The chart-card end marker occurs before its start marker."
+    )
+  }
+  
+  # Clear all chart card headers.
+  chart_header_starts <- grep(
+    'class=["\'][^"\']*\\bcard-header\\b',
+    updated_html,
+    perl = TRUE
+  )
+  
+  chart_header_starts <- chart_header_starts[
+    chart_header_starts > chart_html_start &
+      chart_header_starts < chart_html_end
+  ]
+  
+  # Clear all chart card bodies.
+  chart_body_starts <- grep(
+    'class=["\'][^"\']*\\bcard-body\\b',
+    updated_html,
+    perl = TRUE
+  )
+  
+  chart_body_starts <- chart_body_starts[
+    chart_body_starts > chart_html_start &
+      chart_body_starts < chart_html_end
+  ]
+  
+  elements_to_clear <- sort(
+    c(
+      chart_header_starts,
+      chart_body_starts
+    ),
+    decreasing = TRUE
+  )
+  
+  if (length(elements_to_clear) == 0) {
+    stop(
+      "No chart card headers or bodies were found."
+    )
+  }
+  
+  # Work from the bottom upward so earlier line numbers stay valid.
+  for (element_start in elements_to_clear) {
+    updated_html <- clear_div_contents_by_line(
+      updated_html,
+      element_start
+    )
+  }
+  
+  # Clear all generated headline-card JavaScript.
+  card_count <- length(
+    find_page_cards_row(
+      updated_html
+    )$card_starts
+  )
+  
   tryCatch(
     {
       writeLines(
-        lines,
+        updated_html,
         paths$html,
         useBytes = TRUE
       )
@@ -1790,10 +1957,25 @@ clear_page_design_files <- function(
       update_page_js_card_sections(
         project_root = project_root,
         page_href = page_href,
-        card_count = length(
-          find_page_cards_row(lines)$card_starts
-        ),
+        card_count = card_count,
         preserve_existing = FALSE
+      )
+      
+      updated_js <- readLines(
+        paths$js,
+        warn = FALSE,
+        encoding = "UTF-8"
+      )
+      
+      updated_js <- clear_page_js_chart_content(
+        js_lines = updated_js,
+        js_filename = paths$js_filename
+      )
+      
+      writeLines(
+        updated_js,
+        paths$js,
+        useBytes = TRUE
       )
     },
     error = function(error) {
