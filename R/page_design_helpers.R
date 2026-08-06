@@ -1172,6 +1172,546 @@ update_page_card_body <- function(
   invisible(paths$html)
 }
 
+update_page_card_value_js <- function(
+    project_root,
+    page_href,
+    card_number,
+    calculation
+) {
+  
+  paths <- page_design_paths(
+    project_root = project_root,
+    page_href = page_href
+  )
+  
+  js_path <- paths$js
+  
+  if (!file.exists(js_path)) {
+    stop(
+      paste0(
+        paths$js_filename,
+        " was not found."
+      )
+    )
+  }
+  
+  card_number <- as.integer(card_number)
+  
+  if (
+    length(card_number) != 1 ||
+    is.na(card_number) ||
+    card_number < 1 ||
+    card_number > 6
+  ) {
+    stop("A valid page card number is required.")
+  }
+  
+  if (
+    is.null(calculation) ||
+    is.null(calculation$matrix) ||
+    !nzchar(as.character(calculation$matrix)[1])
+  ) {
+    stop("No stored calculation was supplied.")
+  }
+  
+  matrix <- as.character(
+    calculation$matrix
+  )[1]
+  
+  selected_columns <- as.character(
+    calculation$selected_columns
+  )
+  
+  if (length(selected_columns) == 0) {
+    stop("No value column was selected.")
+  }
+  
+  decimal_places <- as.integer(
+    calculation$decimal_places
+  )
+  
+  if (
+    length(decimal_places) != 1 ||
+    is.na(decimal_places) ||
+    decimal_places < 0
+  ) {
+    decimal_places <- 0L
+  }
+  
+  comma_separator <- isTRUE(
+    calculation$comma_separator
+  )
+  
+  display_value <- format_card_calculation_value(
+    value = calculation$raw_value,
+    decimal_places = decimal_places,
+    comma_separator = comma_separator
+  )
+  
+  js_filters <- calculation$js_filters
+  
+  if (is.null(js_filters)) {
+    js_filters <- list()
+  }
+  
+  js_lines <- readLines(
+    js_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  start_marker <- grep(
+    "^\\s*//\\s*Insert values into page cards below\\s*$",
+    js_lines
+  )
+  
+  if (length(start_marker) != 1) {
+    stop(
+      paste0(
+        "Could not uniquely identify ",
+        "'// Insert values into page cards below' in ",
+        paths$js_filename,
+        "."
+      )
+    )
+  }
+  
+  end_marker <- grep(
+    "^\\s*//\\s*End page card content\\s*$",
+    js_lines
+  )
+  
+  if (length(end_marker) != 1) {
+    stop(
+      paste0(
+        "Could not uniquely identify ",
+        "'// End page card content' in ",
+        paths$js_filename,
+        "."
+      )
+    )
+  }
+  
+  if (end_marker <= start_marker) {
+    stop(
+      "The page-card end marker occurs before its start marker."
+    )
+  }
+  
+  current_marker_pattern <- paste0(
+    "^\\s*//\\s*Content for card\\s+",
+    card_number,
+    "\\s*$"
+  )
+  
+  current_marker <- grep(
+    current_marker_pattern,
+    js_lines,
+    perl = TRUE
+  )
+  
+  current_marker <- current_marker[
+    current_marker > start_marker &
+      current_marker < end_marker
+  ]
+  
+  if (length(current_marker) != 1) {
+    stop(
+      paste0(
+        "Could not identify the JavaScript section for page card ",
+        card_number,
+        "."
+      )
+    )
+  }
+  
+  all_card_markers <- grep(
+    "^\\s*//\\s*Content for card\\s+[0-9]+\\s*$",
+    js_lines,
+    perl = TRUE
+  )
+  
+  all_card_markers <- all_card_markers[
+    all_card_markers > start_marker &
+      all_card_markers < end_marker
+  ]
+  
+  next_markers <- all_card_markers[
+    all_card_markers > current_marker
+  ]
+  
+  section_end <- if (length(next_markers) > 0) {
+    min(next_markers) - 1
+  } else {
+    end_marker - 1
+  }
+  
+  data_variable <- paste0(
+    matrix,
+    "_data"
+  )
+  
+  metadata_variable <- paste0(
+    matrix,
+    "_meta"
+  )
+  
+  raw_variable <- paste0(
+    "card_",
+    card_number,
+    "_raw"
+  )
+  
+  value_variable <- paste0(
+    "card_",
+    card_number,
+    "_value"
+  )
+  
+  element_id <- paste0(
+    "card-",
+    card_number,
+    "-value"
+  )
+  
+  # Only treat a declaration as reusable when it occurs
+  # earlier inside the page-card content region.
+  matrix_load_pattern <- paste0(
+    "^\\s*const\\s+\\[\\s*",
+    matrix,
+    "_data\\s*,\\s*",
+    matrix,
+    "_meta\\s*\\]\\s*=\\s*await\\s+readData\\(",
+    '["\']',
+    matrix,
+    '["\']',
+    "\\);\\s*$"
+  )
+  
+  existing_matrix_loads <- grep(
+    matrix_load_pattern,
+    js_lines,
+    perl = TRUE
+  )
+  
+  matrix_loaded_earlier <- any(
+    existing_matrix_loads > start_marker &
+      existing_matrix_loads < current_marker
+  )
+  
+  load_lines <- if (matrix_loaded_earlier) {
+    
+    character()
+    
+  } else {
+    
+    c(
+      paste0(
+        "    const [",
+        data_variable,
+        ", ",
+        metadata_variable,
+        '] = await readData("',
+        escape_javascript_string(matrix),
+        '");'
+      ),
+      
+      if (card_number == 1) {
+        paste0(
+          "    updateYearSpans(",
+          data_variable,
+          ");"
+        )
+      },
+      
+      ""
+    )
+  }
+  
+  filter_lines <- character()
+  
+  if (length(js_filters) > 0) {
+    
+    filter_conditions <- character()
+    
+    for (column_name in names(js_filters)) {
+      
+      filter_definition <- js_filters[[
+        column_name
+      ]]
+      
+      if (
+        is.list(filter_definition) &&
+        !is.null(filter_definition$values)
+      ) {
+        
+        selected_values <- as.character(
+          filter_definition$values
+        )
+        
+        is_year_filter <- isTRUE(
+          filter_definition$is_year
+        )
+        
+      } else {
+        
+        selected_values <- as.character(
+          filter_definition
+        )
+        
+        is_year_filter <- FALSE
+      }
+      
+      js_values <- vapply(
+        selected_values,
+        javascript_filter_value,
+        character(1),
+        is_year = is_year_filter
+      )
+      
+      if (length(js_values) == 1) {
+        
+        condition <- paste0(
+          "row[",
+          javascript_string(column_name),
+          "] == ",
+          js_values[1]
+        )
+        
+      } else {
+        
+        condition <- paste0(
+          "[",
+          paste(
+            js_values,
+            collapse = ", "
+          ),
+          "].includes(row[",
+          javascript_string(column_name),
+          "])"
+        )
+      }
+      
+      filter_conditions <- c(
+        filter_conditions,
+        condition
+      )
+    }
+    
+    combined_condition <- paste(
+      filter_conditions,
+      collapse = " && "
+    )
+    
+    filter_lines <- paste0(
+      "        .filter(row => ",
+      combined_condition,
+      ")"
+    )
+  }
+  
+  selected_column_js <- paste(
+    vapply(
+      selected_columns,
+      javascript_string,
+      character(1)
+    ),
+    collapse = ", "
+  )
+  
+  single_row <- all(
+    vapply(
+      js_filters,
+      function(filter_definition) {
+        
+        if (
+          is.list(filter_definition) &&
+          !is.null(filter_definition$values)
+        ) {
+          length(filter_definition$values)
+        } else {
+          length(filter_definition)
+        }
+      },
+      integer(1)
+    ) == 1L
+  )
+  
+  if (
+    length(selected_columns) == 1 &&
+    single_row
+  ) {
+    
+    selected_column <- javascript_string(
+      selected_columns[[1]]
+    )
+    
+    value_lines <- c(
+      paste0(
+        "    const ",
+        raw_variable,
+        " = ",
+        data_variable
+      ),
+      filter_lines,
+      paste0(
+        "        .map(col => col[",
+        selected_column,
+        "])[0];"
+      ),
+      ""
+    )
+    
+  } else if (length(selected_columns) == 1) {
+    
+    selected_column <- javascript_string(
+      selected_columns[[1]]
+    )
+    
+    value_lines <- c(
+      paste0(
+        "    const ",
+        raw_variable,
+        " = ",
+        data_variable
+      ),
+      filter_lines,
+      paste0(
+        "        .map(col => col[",
+        selected_column,
+        "])"
+      ),
+      paste0(
+        "        .reduce((sum, value) => ",
+        "sum + (Number(value) || 0), 0);"
+      ),
+      ""
+    )
+    
+  } else {
+    
+    value_lines <- c(
+      paste0(
+        "    const ",
+        raw_variable,
+        " = ",
+        data_variable
+      ),
+      filter_lines,
+      paste0(
+        "        .flatMap(row => [",
+        selected_column_js,
+        "].map(column => row[column]))"
+      ),
+      paste0(
+        "        .reduce((sum, value) => ",
+        "sum + (Number(value) || 0), 0);"
+      ),
+      ""
+    )
+  }
+  
+  if (comma_separator) {
+    
+    formatting_lines <- c(
+      paste0(
+        "    const ",
+        value_variable,
+        " = ",
+        raw_variable,
+        '.toLocaleString("en-GB", {'
+      ),
+      paste0(
+        "        minimumFractionDigits: ",
+        decimal_places,
+        ","
+      ),
+      paste0(
+        "        maximumFractionDigits: ",
+        decimal_places
+      ),
+      "    });"
+    )
+    
+  } else if (decimal_places > 0) {
+    
+    formatting_lines <- paste0(
+      "    const ",
+      value_variable,
+      " = ",
+      raw_variable,
+      ".toFixed(",
+      decimal_places,
+      ");"
+    )
+    
+  } else {
+    
+    formatting_lines <- paste0(
+      "    const ",
+      value_variable,
+      " = ",
+      raw_variable,
+      ";"
+    )
+  }
+  
+  insertion_lines <- c(
+    paste0(
+      "    // BuildR display value: ",
+      display_value
+    ),
+    formatting_lines,
+    paste0(
+      '    insertValue("',
+      element_id,
+      '", ',
+      value_variable,
+      ");"
+    ),
+    "",
+    ""
+  )
+  
+  replacement <- c(
+    js_lines[current_marker],
+    "",
+    load_lines,
+    value_lines,
+    insertion_lines
+  )
+  
+  updated_js <- c(
+    if (current_marker > 1) {
+      js_lines[
+        seq_len(current_marker - 1)
+      ]
+    } else {
+      character()
+    },
+    
+    replacement,
+    
+    if (section_end < length(js_lines)) {
+      js_lines[
+        seq.int(
+          section_end + 1,
+          length(js_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_js,
+    js_path,
+    useBytes = TRUE
+  )
+  
+  invisible(js_path)
+}
 
 clear_page_design_files <- function(
     project_root,
