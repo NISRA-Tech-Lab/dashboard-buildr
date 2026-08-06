@@ -4045,6 +4045,10 @@ server <- function(input, output, session) {
     list()
   )
   
+  page_chart_types <- reactiveVal(
+    character()
+  )
+  
   page_card_values <- reactiveVal(
     list()
   )
@@ -4369,6 +4373,29 @@ server <- function(input, output, session) {
     
     page_chart_values(
       chart_values
+    )
+    
+    chart_types <- tryCatch(
+      read_page_chart_types(
+        project_root = folder(),
+        page_href = selected_page_design()
+      ),
+      error = function(error) {
+        showNotification(
+          paste(
+            "Existing chart types could not be read:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+        
+        character()
+      }
+    )
+    
+    page_chart_types(
+      chart_types
     )
   })
   
@@ -4934,6 +4961,8 @@ server <- function(input, output, session) {
     
     chart_values <- page_chart_values()
     
+    chart_types <- page_chart_types()
+    
     if (
       length(chart_count) != 1 ||
       is.na(chart_count) ||
@@ -4975,6 +5004,21 @@ server <- function(input, output, session) {
           current_title <- as.character(
             current_title
           )[1]
+          
+          current_type <- if (
+            chart_number <= length(chart_types)
+          ) {
+            chart_types[chart_number]
+          } else {
+            ""
+          }
+          
+          if (
+            is.na(current_type) ||
+            is.null(current_type)
+          ) {
+            current_type <- ""
+          }
           
           collapse_id <- paste0(
             "page-chart-collapse-",
@@ -5108,10 +5152,9 @@ server <- function(input, output, session) {
                   label = "Chart type",
                   choices = c(
                     "Select a chart type" = "",
-                    "Line chart" = "line",
-                    "Bar chart" = "bar"
+                    page_chart_type_choices()
                   ),
-                  selected = "",
+                  selected = current_type,
                   width = "100%"
                 ),
                 
@@ -5200,6 +5243,18 @@ server <- function(input, output, session) {
               chart_title <- ""
             }
             
+            chart_type <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_type"
+              )
+            ]]
+            
+            if (is.null(chart_type)) {
+              chart_type <- ""
+            }
+            
             tryCatch(
               {
                 update_page_chart_title(
@@ -5209,6 +5264,13 @@ server <- function(input, output, session) {
                   chart_title = chart_title
                 )
                 
+                update_page_chart_type(
+                  project_root = folder(),
+                  page_href = selected_page_design(),
+                  chart_number = current_chart,
+                  chart_type = chart_type
+                )
+                
                 refreshed_titles <- read_page_chart_titles(
                   project_root = folder(),
                   page_href = selected_page_design()
@@ -5216,6 +5278,13 @@ server <- function(input, output, session) {
                 
                 page_chart_values(
                   refreshed_titles
+                )
+                
+                page_chart_types(
+                  read_page_chart_types(
+                    project_root = folder(),
+                    page_href = selected_page_design()
+                  )
                 )
                 
                 showNotification(

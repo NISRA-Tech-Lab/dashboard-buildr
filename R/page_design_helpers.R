@@ -2944,3 +2944,441 @@ update_page_chart_count <- function(
   
   invisible(paths)
 }
+
+page_chart_type_definitions <- function() {
+  list(
+    bar = list(
+      label = "Bar chart",
+      script = "bar-chart.js",
+      function_name = "barChart"
+    ),
+    table = list(
+      label = "Table",
+      script = "insert-table.js",
+      function_name = "insertTable"
+    ),
+    line = list(
+      label = "Line chart",
+      script = "line-chart.js",
+      function_name = "lineChart"
+    ),
+    pie = list(
+      label = "Pie chart",
+      script = "pie-chart.js",
+      function_name = "pieChart"
+    ),
+    map = list(
+      label = "Map",
+      script = "plot-map.js",
+      function_name = "plotMap"
+    ),
+    pyramid = list(
+      label = "Population pyramid",
+      script = "pyramid-chart.js",
+      function_name = "pyramidChart"
+    ),
+    treemap = list(
+      label = "Treemap",
+      script = "treemap-chart.js",
+      function_name = "treemapChart"
+    )
+  )
+}
+
+
+page_chart_type_choices <- function() {
+  definitions <- page_chart_type_definitions()
+  
+  stats::setNames(
+    names(definitions),
+    vapply(
+      definitions,
+      function(definition) {
+        definition$label
+      },
+      character(1)
+    )
+  )
+}
+
+read_page_chart_types <- function(
+    project_root,
+    page_href
+) {
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$js)) {
+    return(character())
+  }
+  
+  js_lines <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  region_start <- grep(
+    "^\\s*//\\s*Insert chart content below\\s*$",
+    js_lines
+  )
+  
+  region_end <- grep(
+    "^\\s*//\\s*End chart content\\s*$",
+    js_lines
+  )
+  
+  if (
+    length(region_start) != 1 ||
+    length(region_end) != 1 ||
+    region_end <= region_start
+  ) {
+    return(character())
+  }
+  
+  chart_markers <- grep(
+    "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
+    js_lines
+  )
+  
+  chart_markers <- chart_markers[
+    chart_markers > region_start &
+      chart_markers < region_end
+  ]
+  
+  if (length(chart_markers) == 0) {
+    return(character())
+  }
+  
+  chart_types <- character(
+    length(chart_markers)
+  )
+  
+  for (i in seq_along(chart_markers)) {
+    section_end <- if (i < length(chart_markers)) {
+      chart_markers[i + 1] - 1
+    } else {
+      region_end - 1
+    }
+    
+    section <- js_lines[
+      chart_markers[i]:section_end
+    ]
+    
+    type_line <- grep(
+      "^\\s*//\\s*BuildR chart type:\\s*[a-z]+\\s*$",
+      section,
+      value = TRUE
+    )
+    
+    if (length(type_line) == 1) {
+      chart_types[i] <- trimws(
+        sub(
+          "^\\s*//\\s*BuildR chart type:\\s*",
+          "",
+          type_line
+        )
+      )
+    } else {
+      chart_types[i] <- ""
+    }
+  }
+  
+  chart_types
+}
+normalise_page_chart_imports <- function(js_lines) {
+  definitions <- page_chart_type_definitions()
+  
+  type_lines <- grep(
+    "^\\s*//\\s*BuildR chart type:\\s*[a-z]+\\s*$",
+    js_lines,
+    value = TRUE
+  )
+  
+  chart_types <- trimws(
+    sub(
+      "^\\s*//\\s*BuildR chart type:\\s*",
+      "",
+      type_lines
+    )
+  )
+  
+  chart_types <- unique(
+    chart_types[
+      chart_types %in% names(definitions)
+    ]
+  )
+  
+  # Remove all existing imports from ./charts/.
+  js_lines <- js_lines[
+    !grepl(
+      "^\\s*import\\b.*[\"']\\./charts/",
+      js_lines,
+      perl = TRUE
+    )
+  ]
+  
+  required_imports <- character()
+  
+  if (length(chart_types) > 0) {
+    required_imports <- vapply(
+      chart_types,
+      function(chart_type) {
+        definition <- definitions[[
+          chart_type
+        ]]
+        
+        paste0(
+          "import { ",
+          definition$function_name,
+          ' } from "./charts/',
+          definition$script,
+          '";'
+        )
+      },
+      character(1)
+    )
+  }
+  
+  listener_line <- grep(
+    paste0(
+      "^\\s*window\\.addEventListener\\(",
+      "[\"']DOMContentLoaded[\"']"
+    ),
+    js_lines,
+    perl = TRUE
+  )
+  
+  if (length(listener_line) != 1) {
+    stop(
+      paste(
+        "Could not uniquely identify the",
+        "DOMContentLoaded event listener."
+      )
+    )
+  }
+  
+  insertion_point <- listener_line - 1
+  
+  # Remove blank lines directly before the event listener so the
+  # imports can be reconstructed consistently.
+  while (
+    insertion_point > 0 &&
+    !nzchar(trimws(js_lines[insertion_point]))
+  ) {
+    insertion_point <- insertion_point - 1
+  }
+  
+  c(
+    if (insertion_point > 0) {
+      js_lines[seq_len(insertion_point)]
+    } else {
+      character()
+    },
+    required_imports,
+    "",
+    js_lines[listener_line:length(js_lines)]
+  )
+}
+
+update_page_chart_type <- function(
+    project_root,
+    page_href,
+    chart_number,
+    chart_type
+) {
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$js)) {
+    stop(
+      paste0(
+        paths$js_filename,
+        " was not found."
+      )
+    )
+  }
+  
+  chart_number <- as.integer(
+    chart_number
+  )
+  
+  if (
+    length(chart_number) != 1 ||
+    is.na(chart_number) ||
+    chart_number < 1 ||
+    chart_number > 3
+  ) {
+    stop("A valid chart number is required.")
+  }
+  
+  chart_type <- trimws(
+    as.character(chart_type)[1]
+  )
+  
+  definitions <- page_chart_type_definitions()
+  
+  if (
+    nzchar(chart_type) &&
+    !chart_type %in% names(definitions)
+  ) {
+    stop("The selected chart type is not valid.")
+  }
+  
+  original_js <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  js_lines <- original_js
+  
+  region_start <- grep(
+    "^\\s*//\\s*Insert chart content below\\s*$",
+    js_lines
+  )
+  
+  region_end <- grep(
+    "^\\s*//\\s*End chart content\\s*$",
+    js_lines
+  )
+  
+  if (
+    length(region_start) != 1 ||
+    length(region_end) != 1
+  ) {
+    stop(
+      "Could not uniquely identify the chart JavaScript region."
+    )
+  }
+  
+  marker_pattern <- paste0(
+    "^\\s*//\\s*Content for chart\\s+",
+    chart_number,
+    "\\s*$"
+  )
+  
+  chart_marker <- grep(
+    marker_pattern,
+    js_lines
+  )
+  
+  chart_marker <- chart_marker[
+    chart_marker > region_start &
+      chart_marker < region_end
+  ]
+  
+  if (length(chart_marker) != 1) {
+    stop(
+      paste0(
+        "Could not identify the JavaScript section for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  all_markers <- grep(
+    "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
+    js_lines
+  )
+  
+  all_markers <- all_markers[
+    all_markers > region_start &
+      all_markers < region_end
+  ]
+  
+  next_markers <- all_markers[
+    all_markers > chart_marker
+  ]
+  
+  section_end <- if (length(next_markers) > 0) {
+    min(next_markers) - 1
+  } else {
+    region_end - 1
+  }
+  
+  existing_section <- js_lines[
+    chart_marker:section_end
+  ]
+  
+  existing_section <- existing_section[
+    !grepl(
+      "^\\s*//\\s*BuildR chart type:",
+      existing_section
+    )
+  ]
+  
+  replacement_section <- c(
+    existing_section[1],
+    if (nzchar(chart_type)) {
+      paste0(
+        "    // BuildR chart type: ",
+        chart_type
+      )
+    } else {
+      character()
+    },
+    if (length(existing_section) > 1) {
+      existing_section[-1]
+    } else {
+      character()
+    }
+  )
+  
+  updated_js <- c(
+    if (chart_marker > 1) {
+      js_lines[
+        seq_len(chart_marker - 1)
+      ]
+    } else {
+      character()
+    },
+    replacement_section,
+    if (section_end < length(js_lines)) {
+      js_lines[
+        seq.int(
+          section_end + 1,
+          length(js_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  updated_js <- normalise_page_chart_imports(
+    updated_js
+  )
+  
+  tryCatch(
+    {
+      writeLines(
+        updated_js,
+        paths$js,
+        useBytes = TRUE
+      )
+    },
+    error = function(error) {
+      writeLines(
+        original_js,
+        paths$js,
+        useBytes = TRUE
+      )
+      
+      stop(
+        paste(
+          "The chart JavaScript was restored after an error:",
+          conditionMessage(error)
+        ),
+        call. = FALSE
+      )
+    }
+  )
+  
+  invisible(paths$js)
+}
