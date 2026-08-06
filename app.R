@@ -2685,19 +2685,42 @@ server <- function(input, output, session) {
   
   homepage_card_editor_count <- reactiveVal(0)
   
+  homepage_card_values <- reactiveVal(
+    list()
+  )
+  
   observe({
     req(folder())
     
-    card_count <- tryCatch(
-      count_homepage_cards(
+    card_values <- tryCatch(
+      read_homepage_card_values(
         project_root = folder()
       ),
       error = function(error) {
-        0L
+        showNotification(
+          paste(
+            "Existing homepage card content could not be read:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+        
+        list()
       }
     )
     
-    homepage_card_editor_count(card_count)
+    card_count <- length(
+      card_values
+    )
+    
+    homepage_card_values(
+      card_values
+    )
+    
+    homepage_card_editor_count(
+      card_count
+    )
     
     if (card_count > 0) {
       updateNumericInput(
@@ -2760,6 +2783,21 @@ server <- function(input, output, session) {
       lapply(
         seq_len(card_count),
         function(card_number) {
+          
+          card_values <- homepage_card_values()
+          
+          current_values <- if (
+            card_number <= length(card_values)
+          ) {
+            card_values[[card_number]]
+          } else {
+            list(
+              top_line = "",
+              unit = "",
+              bottom_line = "",
+              page_href = ""
+            )
+          }
           
           heading_id <- paste0(
             "homepage-card-heading-",
@@ -2872,7 +2910,7 @@ server <- function(input, output, session) {
                     "_top_line"
                   ),
                   label = "Top line",
-                  value = "",
+                  value = current_values$top_line,
                   width = "100%"
                 ),
                 
@@ -2941,7 +2979,7 @@ server <- function(input, output, session) {
                         "_unit"
                       ),
                       label = "Unit",
-                      value = "",
+                      value = current_values$unit,
                       width = "100%"
                     )
                   )
@@ -2954,7 +2992,7 @@ server <- function(input, output, session) {
                     "_bottom_line"
                   ),
                   label = "Bottom line",
-                  value = "",
+                  value = current_values$bottom_line,
                   width = "100%"
                 ),
                 
@@ -2966,7 +3004,14 @@ server <- function(input, output, session) {
                   ),
                   label = "Link to page",
                   choices = page_choices,
-                  selected = "",
+                  selected = if (
+                    current_values$page_href %in%
+                    unname(page_choices)
+                  ) {
+                    current_values$page_href
+                  } else {
+                    ""
+                  },
                   width = "100%"
                 ),
                 
@@ -3116,6 +3161,12 @@ server <- function(input, output, session) {
                   card_number = current_card,
                   page_href = selected_href,
                   page_text = selected_text
+                )
+                
+                homepage_card_values(
+                  read_homepage_card_values(
+                    project_root = folder()
+                  )
                 )
                 
                 showNotification(

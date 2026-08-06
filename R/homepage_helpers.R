@@ -2050,3 +2050,274 @@ update_homepage_card_value_js <- function(
   
   invisible(js_path)
 }
+
+restore_homepage_year_tags <- function(html) {
+  
+  html <- gsub(
+    '<span\\s+class=["\']latest-year["\']\\s*></span>',
+    "<<latest-year>>",
+    html,
+    perl = TRUE
+  )
+  
+  html <- gsub(
+    '<span\\s+class=["\']last-year["\']\\s*></span>',
+    "<<last-year>>",
+    html,
+    perl = TRUE
+  )
+  
+  html <- gsub(
+    '<span\\s+class=["\']first-year["\']\\s*></span>',
+    "<<first-year>>",
+    html,
+    perl = TRUE
+  )
+  
+  html
+}
+
+
+html_fragment_to_text <- function(html) {
+  
+  html <- trimws(html)
+  
+  if (!nzchar(html)) {
+    return("")
+  }
+  
+  html <- restore_homepage_year_tags(html)
+  
+  document <- xml2::read_html(
+    paste0(
+      "<div>",
+      html,
+      "</div>"
+    )
+  )
+  
+  trimws(
+    xml2::xml_text(document)
+  )
+}
+
+
+read_homepage_card_values <- function(project_root) {
+  
+  index_html_path <- file.path(
+    project_root,
+    "index.html"
+  )
+  
+  if (!file.exists(index_html_path)) {
+    stop("index.html was not found.")
+  }
+  
+  html_lines <- readLines(
+    index_html_path,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  card_section <- find_homepage_cards_row(
+    html_lines
+  )
+  
+  lapply(
+    seq_along(card_section$card_starts),
+    function(card_number) {
+      
+      card_start <- card_section$card_starts[
+        card_number
+      ]
+      
+      card_end <- find_closing_div(
+        html_lines,
+        card_start
+      )
+      
+      card_html <- paste(
+        html_lines[card_start:card_end],
+        collapse = "\n"
+      )
+      
+      document <- xml2::read_html(
+        paste0(
+          "<html><body>",
+          card_html,
+          "</body></html>"
+        )
+      )
+      
+      card_body <- xml2::xml_find_first(
+        document,
+        paste0(
+          "//div[contains(concat(' ', ",
+          "normalize-space(@class), ' '), ",
+          "' card-body ')]"
+        )
+      )
+      
+      card_footer <- xml2::xml_find_first(
+        document,
+        paste0(
+          "//div[contains(concat(' ', ",
+          "normalize-space(@class), ' '), ",
+          "' card-footer ')]"
+        )
+      )
+      
+      paragraph <- xml2::xml_find_first(
+        card_body,
+        ".//p"
+      )
+      
+      value_span <- xml2::xml_find_first(
+        card_body,
+        paste0(
+          ".//span[@id='headline-",
+          card_number,
+          "-value']"
+        )
+      )
+      
+      unit_span <- xml2::xml_find_first(
+        card_body,
+        paste0(
+          ".//span[contains(concat(' ', ",
+          "normalize-space(@class), ' '), ",
+          "' unit ')]"
+        )
+      )
+      
+      top_line <- ""
+      bottom_line <- ""
+      
+      if (
+        !inherits(paragraph, "xml_missing") &&
+        !inherits(value_span, "xml_missing")
+      ) {
+        
+        paragraph_html <- as.character(
+          paragraph
+        )
+        
+        value_html <- as.character(
+          value_span
+        )
+        
+        value_position <- regexpr(
+          value_html,
+          paragraph_html,
+          fixed = TRUE
+        )
+        
+        if (value_position[1] != -1) {
+          
+          before_value <- substr(
+            paragraph_html,
+            1,
+            value_position[1] - 1
+          )
+          
+          after_value <- substr(
+            paragraph_html,
+            value_position[1] +
+              attr(
+                value_position,
+                "match.length"
+              ),
+            nchar(paragraph_html)
+          )
+          
+          # Remove the opening <p> and the break before the value.
+          before_value <- sub(
+            "^<p[^>]*>",
+            "",
+            before_value,
+            perl = TRUE
+          )
+          
+          before_value <- sub(
+            "<br\\s*/?>\\s*$",
+            "",
+            before_value,
+            perl = TRUE
+          )
+          
+          # Remove the optional unit, break and closing </p>.
+          if (!inherits(unit_span, "xml_missing")) {
+            after_value <- sub(
+              fixed = TRUE,
+              pattern = as.character(unit_span),
+              replacement = "",
+              x = after_value
+            )
+          }
+          
+          after_value <- sub(
+            "^\\s*<br\\s*/?>",
+            "",
+            after_value,
+            perl = TRUE
+          )
+          
+          after_value <- sub(
+            "</p>\\s*$",
+            "",
+            after_value,
+            perl = TRUE
+          )
+          
+          top_line <- html_fragment_to_text(
+            before_value
+          )
+          
+          bottom_line <- html_fragment_to_text(
+            after_value
+          )
+        }
+      }
+      
+      unit <- if (
+        inherits(unit_span, "xml_missing")
+      ) {
+        ""
+      } else {
+        trimws(
+          xml2::xml_text(unit_span)
+        )
+      }
+      
+      footer_link <- xml2::xml_find_first(
+        card_footer,
+        ".//a"
+      )
+      
+      page_href <- if (
+        inherits(footer_link, "xml_missing")
+      ) {
+        ""
+      } else {
+        xml2::xml_attr(
+          footer_link,
+          "href"
+        )
+      }
+      
+      if (
+        is.na(page_href) ||
+        is.null(page_href)
+      ) {
+        page_href <- ""
+      }
+      
+      list(
+        top_line = top_line,
+        unit = unit,
+        bottom_line = bottom_line,
+        page_href = page_href
+      )
+    }
+  )
+}
