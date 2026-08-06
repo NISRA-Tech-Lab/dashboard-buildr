@@ -1972,6 +1972,14 @@ clear_page_design_files <- function(
         js_filename = paths$js_filename
       )
       
+      updated_js <- updated_js[
+        !grepl(
+          "^\\s*import\\b.*[\"']\\./charts/",
+          updated_js,
+          perl = TRUE
+        )
+      ]
+      
       writeLines(
         updated_js,
         paths$js,
