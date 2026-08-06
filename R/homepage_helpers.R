@@ -2096,7 +2096,27 @@ html_fragment_to_text <- function(html) {
     return("")
   }
   
-  html <- restore_homepage_year_tags(html)
+  # Use plain-text placeholders while parsing the HTML.
+  html <- gsub(
+    '<span\\s+class=["\']latest-year["\']\\s*></span>',
+    "___BUILDR_LATEST_YEAR___",
+    html,
+    perl = TRUE
+  )
+  
+  html <- gsub(
+    '<span\\s+class=["\']last-year["\']\\s*></span>',
+    "___BUILDR_LAST_YEAR___",
+    html,
+    perl = TRUE
+  )
+  
+  html <- gsub(
+    '<span\\s+class=["\']first-year["\']\\s*></span>',
+    "___BUILDR_FIRST_YEAR___",
+    html,
+    perl = TRUE
+  )
   
   document <- xml2::read_html(
     paste0(
@@ -2106,9 +2126,33 @@ html_fragment_to_text <- function(html) {
     )
   )
   
-  trimws(
+  text <- trimws(
     xml2::xml_text(document)
   )
+  
+  # Restore the user-facing tokens after the HTML has been parsed.
+  text <- gsub(
+    "___BUILDR_LATEST_YEAR___",
+    "<<latest-year>>",
+    text,
+    fixed = TRUE
+  )
+  
+  text <- gsub(
+    "___BUILDR_LAST_YEAR___",
+    "<<last-year>>",
+    text,
+    fixed = TRUE
+  )
+  
+  text <- gsub(
+    "___BUILDR_FIRST_YEAR___",
+    "<<first-year>>",
+    text,
+    fixed = TRUE
+  )
+  
+  text
 }
 
 
@@ -2283,13 +2327,50 @@ read_homepage_card_values <- function(project_root) {
             perl = TRUE
           )
           
-          top_line <- html_fragment_to_text(
-            before_value
+          before_value <- gsub(
+            '<span class="latest-year"></span>',
+            "<<latest-year>>",
+            before_value,
+            fixed = TRUE
           )
           
-          bottom_line <- html_fragment_to_text(
-            after_value
+          before_value <- gsub(
+            '<span class="last-year"></span>',
+            "<<last-year>>",
+            before_value,
+            fixed = TRUE
           )
+          
+          before_value <- gsub(
+            '<span class="first-year"></span>',
+            "<<first-year>>",
+            before_value,
+            fixed = TRUE
+          )
+          
+          after_value <- gsub(
+            '<span class="latest-year"></span>',
+            "<<latest-year>>",
+            after_value,
+            fixed = TRUE
+          )
+          
+          after_value <- gsub(
+            '<span class="last-year"></span>',
+            "<<last-year>>",
+            after_value,
+            fixed = TRUE
+          )
+          
+          after_value <- gsub(
+            '<span class="first-year"></span>',
+            "<<first-year>>",
+            after_value,
+            fixed = TRUE
+          )
+          
+          top_line <- html_fragment_to_text(before_value)
+          bottom_line <- html_fragment_to_text(after_value)
         }
       }
       
