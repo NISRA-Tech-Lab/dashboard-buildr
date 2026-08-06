@@ -2800,6 +2800,19 @@ server <- function(input, output, session) {
             )
           }
           
+          pending_calculation <- card_calculations[[
+            as.character(card_number)
+          ]]
+          
+          if (!is.null(pending_calculation)) {
+            
+            current_values$value <- format_card_calculation_value(
+              value = pending_calculation$raw_value,
+              decimal_places = pending_calculation$decimal_places,
+              comma_separator = pending_calculation$comma_separator
+            )
+          }
+          
           heading_id <- paste0(
             "homepage-card-heading-",
             card_number
@@ -3208,6 +3221,33 @@ server <- function(input, output, session) {
   
   card_calculations <- reactiveValues()
   
+  load_calculation_matrix <- function(matrix) {
+    
+    req(folder())
+    req(matrix)
+    
+    result <- tryCatch(
+      read_card_calculation_data(
+        project_root = folder(),
+        matrix = matrix
+      ),
+      error = function(error) {
+        showNotification(
+          paste(
+            "The table could not be loaded:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+        
+        NULL
+      }
+    )
+    
+    calculation_data(result)
+  }
+  
   show_card_calculation_modal <- function(
     card_number
   ) {
@@ -3294,8 +3334,6 @@ server <- function(input, output, session) {
     active_calculation_card(
       card_number
     )
-    
-    calculation_data(NULL)
     
     showModal(
       modalDialog(
@@ -3399,6 +3437,10 @@ server <- function(input, output, session) {
         easyClose = FALSE
       )
     )
+    
+    load_calculation_matrix(
+      selected_matrix
+    )
   }
   
   ## Connect each Calculate button ####
@@ -3441,39 +3483,11 @@ server <- function(input, output, session) {
   observeEvent(
     input$calculation_matrix,
     {
-      req(folder())
-      req(input$calculation_matrix)
-      
-      saved_calculation <- card_calculations[[
-        as.character(
-          active_calculation_card()
-        )
-      ]]
-      
-      result <- tryCatch(
-        read_card_calculation_data(
-          project_root = folder(),
-          matrix = input$calculation_matrix
-        ),
-        error = function(error) {
-          
-          showNotification(
-            paste(
-              "The table could not be loaded:",
-              conditionMessage(error)
-            ),
-            type = "error",
-            duration = NULL
-          )
-          
-          NULL
-        }
+      load_calculation_matrix(
+        input$calculation_matrix
       )
-      
-      calculation_data(result)
-      
     },
-    ignoreInit = FALSE
+    ignoreInit = TRUE
   )
   
   ### Render the dynamic filters ####
@@ -3789,25 +3803,6 @@ server <- function(input, output, session) {
         value = value,
         decimal_places = decimal_places,
         comma_separator = stored_calculation$comma_separator
-      )
-      
-      value_input_id <- paste0(
-        "card_",
-        card_number,
-        "_value"
-      )
-      
-      shinyjs::runjs(
-        sprintf(
-          paste0(
-            "$('#%s').val(%s).trigger('change');"
-          ),
-          value_input_id,
-          jsonlite::toJSON(
-            display_value,
-            auto_unbox = TRUE
-          )
-        )
       )
       
       removeModal()
