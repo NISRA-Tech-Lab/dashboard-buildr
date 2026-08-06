@@ -4039,13 +4039,17 @@ server <- function(input, output, session) {
   
   page_card_editor_count <- reactiveVal(0)
   
-  page_chart_editor_count <- reactiveVal(2)
+  page_chart_editor_count <- reactiveVal(0)
   
   page_chart_values <- reactiveVal(
     list()
   )
   
   page_chart_types <- reactiveVal(
+    character()
+  )
+  
+  page_chart_matrices <- reactiveVal(
     character()
   )
   
@@ -4235,7 +4239,7 @@ server <- function(input, output, session) {
           numericInput(
             inputId = "page_design_chart_count",
             label = "Number of charts",
-            value = 2,
+            value = page_chart_editor_count(),
             min = 1,
             max = 3,
             step = 1,
@@ -4263,7 +4267,6 @@ server <- function(input, output, session) {
   })
   
   ### Load the selected page ####
-  
   observe({
     req(folder())
     req(selected_page_design())
@@ -4396,6 +4399,30 @@ server <- function(input, output, session) {
     
     page_chart_types(
       chart_types
+    )
+    
+    chart_matrices <- tryCatch(
+      read_page_chart_matrices(
+        project_root = folder(),
+        page_href = selected_page_design()
+      ),
+      error = function(error) {
+        
+        showNotification(
+          paste(
+            "Existing chart datasets could not be read:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+        
+        character()
+      }
+    )
+    
+    page_chart_matrices(
+      chart_matrices
     )
   })
   
@@ -4963,6 +4990,50 @@ server <- function(input, output, session) {
     
     chart_types <- page_chart_types()
     
+    chart_matrices <- page_chart_matrices()
+    
+    files <- loaded_table_files()
+    metadata <- loaded_table_metadata()
+    
+    matrix_codes <- tools::file_path_sans_ext(
+      basename(files)
+    )
+    
+    matrix_labels <- vapply(
+      matrix_codes,
+      function(matrix) {
+        
+        table_metadata <- metadata[[matrix]]
+        
+        label <- if (
+          !is.null(table_metadata) &&
+          !is.null(table_metadata$label) &&
+          length(table_metadata$label) > 0 &&
+          nzchar(as.character(table_metadata$label)[1])
+        ) {
+          as.character(table_metadata$label)[1]
+        } else {
+          matrix
+        }
+        
+        paste0(
+          label,
+          " (",
+          matrix,
+          ")"
+        )
+      },
+      character(1)
+    )
+    
+    matrix_choices <- c(
+      "Select data" = "",
+      stats::setNames(
+        matrix_codes,
+        matrix_labels
+      )
+    )
+    
     if (
       length(chart_count) != 1 ||
       is.na(chart_count) ||
@@ -5018,6 +5089,21 @@ server <- function(input, output, session) {
             is.null(current_type)
           ) {
             current_type <- ""
+          }
+          
+          current_matrix <- if (
+            chart_number <= length(chart_matrices)
+          ) {
+            chart_matrices[chart_number]
+          } else {
+            ""
+          }
+          
+          if (
+            is.na(current_matrix) ||
+            is.null(current_matrix)
+          ) {
+            current_matrix <- ""
           }
           
           collapse_id <- paste0(
@@ -5165,10 +5251,8 @@ server <- function(input, output, session) {
                     "_matrix"
                   ),
                   label = "Data Portal table",
-                  choices = c(
-                    "Select data" = ""
-                  ),
-                  selected = "",
+                  choices = matrix_choices,
+                  selected = current_matrix,
                   width = "100%"
                 ),
                 
@@ -5255,6 +5339,18 @@ server <- function(input, output, session) {
               chart_type <- ""
             }
             
+            matrix <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_matrix"
+              )
+            ]]
+            
+            if (is.null(matrix)) {
+              matrix <- ""
+            }
+            
             tryCatch(
               {
                 update_page_chart_title(
@@ -5271,6 +5367,13 @@ server <- function(input, output, session) {
                   chart_type = chart_type
                 )
                 
+                update_page_chart_matrix(
+                  project_root = folder(),
+                  page_href = selected_page_design(),
+                  chart_number = current_chart,
+                  matrix = matrix
+                )
+                
                 refreshed_titles <- read_page_chart_titles(
                   project_root = folder(),
                   page_href = selected_page_design()
@@ -5282,6 +5385,13 @@ server <- function(input, output, session) {
                 
                 page_chart_types(
                   read_page_chart_types(
+                    project_root = folder(),
+                    page_href = selected_page_design()
+                  )
+                )
+                
+                page_chart_matrices(
+                  read_page_chart_matrices(
                     project_root = folder(),
                     page_href = selected_page_design()
                   )

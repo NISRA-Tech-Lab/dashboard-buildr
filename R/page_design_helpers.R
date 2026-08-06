@@ -3382,3 +3382,393 @@ update_page_chart_type <- function(
   
   invisible(paths$js)
 }
+
+read_page_chart_matrices <- function(
+    project_root,
+    page_href
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$js)) {
+    return(character())
+  }
+  
+  js_lines <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  region_start <- grep(
+    "^\\s*//\\s*Insert chart content below\\s*$",
+    js_lines
+  )
+  
+  region_end <- grep(
+    "^\\s*//\\s*End chart content\\s*$",
+    js_lines
+  )
+  
+  if (
+    length(region_start) != 1 ||
+    length(region_end) != 1 ||
+    region_end <= region_start
+  ) {
+    return(character())
+  }
+  
+  chart_markers <- grep(
+    "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
+    js_lines
+  )
+  
+  chart_markers <- chart_markers[
+    chart_markers > region_start &
+      chart_markers < region_end
+  ]
+  
+  if (length(chart_markers) == 0) {
+    return(character())
+  }
+  
+  matrices <- character(
+    length(chart_markers)
+  )
+  
+  for (i in seq_along(chart_markers)) {
+    
+    section_end <- if (
+      i < length(chart_markers)
+    ) {
+      chart_markers[i + 1] - 1
+    } else {
+      region_end - 1
+    }
+    
+    section <- js_lines[
+      chart_markers[i]:section_end
+    ]
+    
+    matrix_line <- grep(
+      "^\\s*//\\s*BuildR matrix:\\s*[A-Za-z0-9_-]+\\s*$",
+      section,
+      value = TRUE
+    )
+    
+    if (length(matrix_line) == 1) {
+      
+      matrices[i] <- trimws(
+        sub(
+          "^\\s*//\\s*BuildR matrix:\\s*",
+          "",
+          matrix_line
+        )
+      )
+      
+    } else {
+      
+      matrices[i] <- ""
+    }
+  }
+  
+  matrices
+}
+
+update_page_chart_matrix <- function(
+    project_root,
+    page_href,
+    chart_number,
+    matrix
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$js)) {
+    stop(
+      paste0(
+        paths$js_filename,
+        " was not found."
+      )
+    )
+  }
+  
+  chart_number <- as.integer(
+    chart_number
+  )
+  
+  if (
+    length(chart_number) != 1 ||
+    is.na(chart_number) ||
+    chart_number < 1 ||
+    chart_number > 3
+  ) {
+    stop("A valid chart number is required.")
+  }
+  
+  matrix <- trimws(
+    as.character(matrix)[1]
+  )
+  
+  original_js <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  js_lines <- original_js
+  
+  region_start <- grep(
+    "^\\s*//\\s*Insert chart content below\\s*$",
+    js_lines
+  )
+  
+  region_end <- grep(
+    "^\\s*//\\s*End chart content\\s*$",
+    js_lines
+  )
+  
+  if (
+    length(region_start) != 1 ||
+    length(region_end) != 1 ||
+    region_end <= region_start
+  ) {
+    stop(
+      "Could not uniquely identify the chart JavaScript region."
+    )
+  }
+  
+  chart_marker <- grep(
+    paste0(
+      "^\\s*//\\s*Content for chart\\s+",
+      chart_number,
+      "\\s*$"
+    ),
+    js_lines
+  )
+  
+  chart_marker <- chart_marker[
+    chart_marker > region_start &
+      chart_marker < region_end
+  ]
+  
+  if (length(chart_marker) != 1) {
+    stop(
+      paste0(
+        "Could not identify the JavaScript section for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  all_markers <- grep(
+    "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
+    js_lines
+  )
+  
+  all_markers <- all_markers[
+    all_markers > region_start &
+      all_markers < region_end
+  ]
+  
+  next_markers <- all_markers[
+    all_markers > chart_marker
+  ]
+  
+  section_end <- if (length(next_markers) > 0) {
+    min(next_markers) - 1
+  } else {
+    region_end - 1
+  }
+  
+  section <- js_lines[
+    chart_marker:section_end
+  ]
+  
+  # Replace the chart's stored matrix comment.
+  section <- section[
+    !grepl(
+      "^\\s*//\\s*BuildR matrix:",
+      section
+    )
+  ]
+  
+  metadata_position <- grep(
+    "^\\s*//\\s*BuildR chart type:",
+    section
+  )
+  
+  insertion_position <- if (
+    length(metadata_position) == 1
+  ) {
+    metadata_position
+  } else {
+    1L
+  }
+  
+  if (nzchar(matrix)) {
+    
+    section <- append(
+      section,
+      paste0(
+        "    // BuildR matrix: ",
+        matrix
+      ),
+      after = insertion_position
+    )
+  }
+  
+  updated_js <- c(
+    if (chart_marker > 1) {
+      js_lines[
+        seq_len(chart_marker - 1)
+      ]
+    } else {
+      character()
+    },
+    
+    section,
+    
+    if (section_end < length(js_lines)) {
+      js_lines[
+        seq.int(
+          section_end + 1,
+          length(js_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  if (nzchar(matrix)) {
+    
+    data_variable <- paste0(
+      matrix,
+      "_data"
+    )
+    
+    metadata_variable <- paste0(
+      matrix,
+      "_meta"
+    )
+    
+    escaped_matrix <- escape_javascript_string(
+      matrix
+    )
+    
+    declaration_pattern <- paste0(
+      "^\\s*const\\s+\\[\\s*",
+      matrix,
+      "_data\\s*,\\s*",
+      matrix,
+      "_meta\\s*\\]\\s*=\\s*await\\s+readData\\(",
+      "[\"']",
+      matrix,
+      "[\"']",
+      "\\);\\s*$"
+    )
+    
+    matrix_already_loaded <- any(
+      grepl(
+        declaration_pattern,
+        updated_js,
+        perl = TRUE
+      )
+    )
+    
+    if (!matrix_already_loaded) {
+      
+      region_start <- grep(
+        "^\\s*//\\s*Insert chart content below\\s*$",
+        updated_js
+      )
+      
+      chart_marker <- grep(
+        paste0(
+          "^\\s*//\\s*Content for chart\\s+",
+          chart_number,
+          "\\s*$"
+        ),
+        updated_js
+      )
+      
+      chart_marker <- chart_marker[
+        chart_marker > region_start
+      ]
+      
+      matrix_comment <- grep(
+        paste0(
+          "^\\s*//\\s*BuildR matrix:\\s*",
+          matrix,
+          "\\s*$"
+        ),
+        updated_js
+      )
+      
+      matrix_comment <- matrix_comment[
+        matrix_comment > chart_marker
+      ]
+      
+      if (length(matrix_comment) != 1) {
+        stop(
+          "Could not identify where to insert the chart dataset."
+        )
+      }
+      
+      load_lines <- c(
+        paste0(
+          "    const [",
+          data_variable,
+          ", ",
+          metadata_variable,
+          '] = await readData("',
+          escaped_matrix,
+          '");'
+        ),
+        ""
+      )
+      
+      updated_js <- append(
+        updated_js,
+        load_lines,
+        after = matrix_comment
+      )
+    }
+  }
+  
+  tryCatch(
+    {
+      writeLines(
+        updated_js,
+        paths$js,
+        useBytes = TRUE
+      )
+    },
+    error = function(error) {
+      
+      writeLines(
+        original_js,
+        paths$js,
+        useBytes = TRUE
+      )
+      
+      stop(
+        paste(
+          "The chart dataset change was restored after an error:",
+          conditionMessage(error)
+        ),
+        call. = FALSE
+      )
+    }
+  )
+  
+  invisible(paths$js)
+}
