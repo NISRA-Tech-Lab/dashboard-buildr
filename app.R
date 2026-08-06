@@ -180,7 +180,22 @@ ui <- fluidPage(
           )
           
         ),
-        tabPanel("Page design"),
+        
+        tabPanel(
+          "Page design",
+          
+          h2("Page design"),
+          
+          selectInput(
+            inputId = "page_design_page",
+            label = "Page to edit",
+            choices = character(),
+            width = "100%"
+          ),
+          
+          uiOutput("page_design_interface")
+        ),
+        
         tabPanel("User notes")
       )
     )
@@ -3936,6 +3951,663 @@ server <- function(input, output, session) {
       )
     }
   )
+  
+  ## Page design menu ####
+  
+  ### Page design server state ####
+  page_design_version <- reactiveVal(0)
+  
+  selected_page_design <- reactive({
+    req(input$page_design_page)
+    
+    input$page_design_page
+  })
+  
+  page_card_editor_count <- reactiveVal(0)
+  
+  page_card_values <- reactiveVal(
+    list()
+  )
+  
+  page_card_calculations <- reactiveValues()
+  
+  ### Populate the page dropdown ####
+  observe({
+    req(folder())
+    
+    navigation <- config_file()$navigation
+    
+    default_hrefs <- c(
+      "index.html",
+      "page.html",
+      "user-notes.html"
+    )
+    
+    custom_pages <- navigation[
+      !navigation$href %in% default_hrefs,
+      c("href", "text"),
+      drop = FALSE
+    ]
+    
+    choices <- stats::setNames(
+      custom_pages$href,
+      custom_pages$text
+    )
+    
+    current_selection <- isolate(
+      input$page_design_page
+    )
+    
+    selected <- if (
+      !is.null(current_selection) &&
+      current_selection %in% custom_pages$href
+    ) {
+      current_selection
+    } else if (nrow(custom_pages) > 0) {
+      custom_pages$href[1]
+    } else {
+      character()
+    }
+    
+    updateSelectInput(
+      session = session,
+      inputId = "page_design_page",
+      choices = choices,
+      selected = selected
+    )
+  })
+  
+  ### Render the page design interface ####
+  output$page_design_interface <- renderUI({
+    
+    req(folder())
+    
+    page_href <- input$page_design_page
+    
+    if (
+      is.null(page_href) ||
+      !nzchar(page_href)
+    ) {
+      return(
+        tags$em(
+          "Create a dashboard page in Dashboard settings before using Page design."
+        )
+      )
+    }
+    
+    tagList(
+      tags$hr(),
+      
+      h3("Clear content"),
+      
+      tags$p(
+        paste(
+          "Clear the example strapline, page cards",
+          "and example JavaScript values."
+        )
+      ),
+      
+      actionButton(
+        inputId = "clear_page_content",
+        label = "Clear content",
+        icon = icon("eraser"),
+        class = "btn-danger"
+      ),
+      
+      tags$hr(),
+      
+      h3("Edit strapline"),
+      
+      tags$p(
+        "Enter a short line describing the content of this page."
+      ),
+      
+      textInput(
+        inputId = "page_design_strapline",
+        label = "Page strapline",
+        value = "",
+        width = "100%"
+      ),
+      
+      actionButton(
+        inputId = "save_page_design_strapline",
+        label = "Save strapline",
+        icon = icon("save"),
+        class = "btn-primary"
+      ),
+      
+      tags$hr(),
+      
+      h3("Edit cards"),
+      
+      tags$p(
+        paste(
+          "Use between four and six cards to communicate",
+          "the key messages for this page."
+        )
+      ),
+      
+      tags$div(
+        style = paste(
+          "display: flex;",
+          "align-items: flex-end;",
+          "gap: 10px;",
+          "max-width: 360px;"
+        ),
+        
+        tags$div(
+          style = "flex: 1;",
+          
+          numericInput(
+            inputId = "page_design_card_count",
+            label = "Number of cards",
+            value = 6,
+            min = 4,
+            max = 6,
+            step = 1,
+            width = "100%"
+          )
+        ),
+        
+        tags$div(
+          style = "margin-bottom: 15px;",
+          
+          actionButton(
+            inputId = "save_page_design_card_count",
+            label = "Save",
+            icon = icon("save"),
+            class = "btn-primary"
+          )
+        )
+      ),
+      
+      tags$div(
+        style = "margin-top: 20px;",
+        uiOutput("page_card_editors")
+      )
+    )
+  })
+  
+  ### Load the selected page ####
+  
+  observe({
+    req(folder())
+    req(selected_page_design())
+    
+    page_design_version()
+    
+    values <- tryCatch(
+      read_page_card_values(
+        project_root = folder(),
+        page_href = selected_page_design()
+      ),
+      error = function(error) {
+        
+        showNotification(
+          paste(
+            "Existing page card content could not be read:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+        
+        list()
+      }
+    )
+    
+    page_card_values(
+      values
+    )
+    
+    page_card_editor_count(
+      length(values)
+    )
+    
+    strapline <- tryCatch(
+      read_page_strapline(
+        project_root = folder(),
+        page_href = selected_page_design()
+      ),
+      error = function(error) {
+        ""
+      }
+    )
+    
+    updateTextInput(
+      session = session,
+      inputId = "page_design_strapline",
+      value = strapline
+    )
+    
+    if (length(values) > 0) {
+      updateNumericInput(
+        session = session,
+        inputId = "page_design_card_count",
+        value = length(values)
+      )
+    }
+  })
+  
+  ### Clear and strapline observers ####
+  observeEvent(input$clear_page_content, {
+    
+    req(selected_page_design())
+    
+    showModal(
+      modalDialog(
+        title = "Clear page content",
+        
+        tags$p(
+          paste(
+            "This will clear the page strapline, card content",
+            "and generated card JavaScript."
+          )
+        ),
+        
+        tags$p(
+          tags$strong(
+            "Use Git to restore the previous content if required."
+          )
+        ),
+        
+        footer = tagList(
+          modalButton("Cancel"),
+          actionButton(
+            inputId = "confirm_clear_page_content",
+            label = "Clear content",
+            icon = icon("eraser"),
+            class = "btn-danger"
+          )
+        ),
+        
+        easyClose = FALSE
+      )
+    )
+  })
+  
+  
+  observeEvent(input$confirm_clear_page_content, {
+    
+    req(folder())
+    req(selected_page_design())
+    
+    tryCatch(
+      {
+        clear_page_design_files(
+          project_root = folder(),
+          page_href = selected_page_design()
+        )
+        
+        updateTextInput(
+          session = session,
+          inputId = "page_design_strapline",
+          value = ""
+        )
+        
+        page_design_version(
+          page_design_version() + 1
+        )
+        
+        removeModal()
+        
+        showNotification(
+          "Page content cleared.",
+          type = "message"
+        )
+      },
+      error = function(error) {
+        
+        showNotification(
+          paste(
+            "Page content could not be cleared:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+      }
+    )
+  })
+  
+  
+  observeEvent(input$save_page_design_strapline, {
+    
+    req(folder())
+    req(selected_page_design())
+    
+    tryCatch(
+      {
+        update_page_strapline(
+          project_root = folder(),
+          page_href = selected_page_design(),
+          strapline = input$page_design_strapline
+        )
+        
+        showNotification(
+          "Page strapline updated.",
+          type = "message"
+        )
+      },
+      error = function(error) {
+        
+        showNotification(
+          paste(
+            "Page strapline could not be updated:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+      }
+    )
+  })
+  
+  ### Save card count ####
+  observeEvent(input$save_page_design_card_count, {
+    
+    req(folder())
+    req(selected_page_design())
+    
+    requested_count <- as.integer(
+      input$page_design_card_count
+    )
+    
+    if (
+      is.na(requested_count) ||
+      requested_count < 4 ||
+      requested_count > 6
+    ) {
+      showNotification(
+        "Choose between 4 and 6 cards.",
+        type = "error"
+      )
+      
+      return()
+    }
+    
+    tryCatch(
+      {
+        update_page_card_count(
+          project_root = folder(),
+          page_href = selected_page_design(),
+          card_count = requested_count
+        )
+        
+        page_design_version(
+          page_design_version() + 1
+        )
+        
+        showNotification(
+          paste0(
+            "Page updated to ",
+            requested_count,
+            " cards."
+          ),
+          type = "message"
+        )
+      },
+      error = function(error) {
+        
+        showNotification(
+          paste(
+            "The page cards could not be updated:",
+            conditionMessage(error)
+          ),
+          type = "error",
+          duration = NULL
+        )
+      }
+    )
+  })
+  
+  ### Page card accordions ####
+  output$page_card_editors <- renderUI({
+    
+    req(selected_page_design())
+    
+    card_count <- page_card_editor_count()
+    
+    if (card_count < 1) {
+      return(
+        tags$em(
+          "No page cards were found."
+        )
+      )
+    }
+    
+    values <- page_card_values()
+    
+    accordion_id <- "page-card-accordion"
+    
+    tags$div(
+      id = accordion_id,
+      class = "panel-group",
+      role = "tablist",
+      
+      lapply(
+        seq_len(card_count),
+        function(card_number) {
+          
+          current <- if (
+            card_number <= length(values)
+          ) {
+            values[[card_number]]
+          } else {
+            list(
+              top_line = "",
+              value = "",
+              unit = "",
+              bottom_line = "",
+              background = "blue"
+            )
+          }
+          
+          pending <- page_card_calculations[[
+            as.character(card_number)
+          ]]
+          
+          if (!is.null(pending)) {
+            current$value <- format_card_calculation_value(
+              value = pending$raw_value,
+              decimal_places = pending$decimal_places,
+              comma_separator = pending$comma_separator
+            )
+          }
+          
+          collapse_id <- paste0(
+            "page-card-collapse-",
+            card_number
+          )
+          
+          is_open <- card_number == 1
+          
+          tags$div(
+            class = "panel panel-default",
+            
+            tags$div(
+              class = "panel-heading",
+              
+              tags$h4(
+                class = "panel-title",
+                
+                tags$a(
+                  class = if (is_open) "" else "collapsed",
+                  href = "javascript:void(0);",
+                  `data-toggle` = "collapse",
+                  `data-parent` = paste0(
+                    "#",
+                    accordion_id
+                  ),
+                  `data-target` = paste0(
+                    "#",
+                    collapse_id
+                  ),
+                  
+                  paste(
+                    "Card",
+                    card_number
+                  ),
+                  
+                  tags$span(
+                    class = "pull-right",
+                    icon("chevron-down")
+                  )
+                )
+              )
+            ),
+            
+            tags$div(
+              id = collapse_id,
+              class = paste(
+                "panel-collapse collapse",
+                if (is_open) "in" else ""
+              ),
+              
+              tags$div(
+                class = "panel-body",
+                
+                tags$div(
+                  class = "alert alert-info",
+                  
+                  tags$p(
+                    paste(
+                      "Use these fields to construct a short,",
+                      "user-friendly sentence communicating one key message."
+                    )
+                  ),
+                  
+                  tags$p(
+                    style = "margin-bottom: 0;",
+                    
+                    "Dynamic year tags: ",
+                    tags$code("<<latest-year>>"),
+                    ", ",
+                    tags$code("<<last-year>>"),
+                    " and ",
+                    tags$code("<<first-year>>"),
+                    "."
+                  )
+                ),
+                
+                textInput(
+                  inputId = paste0(
+                    "page_card_",
+                    card_number,
+                    "_top_line"
+                  ),
+                  label = "Top line",
+                  value = current$top_line,
+                  width = "100%"
+                ),
+                
+                tags$div(
+                  style = paste(
+                    "display: flex;",
+                    "align-items: flex-end;",
+                    "gap: 12px;"
+                  ),
+                  
+                  tags$div(
+                    style = "flex: 2;",
+                    
+                    tags$div(
+                      class = "form-group",
+                      
+                      tags$label("Value"),
+                      
+                      tags$div(
+                        class = "input-group",
+                        
+                        tags$input(
+                          id = paste0(
+                            "page_card_",
+                            card_number,
+                            "_value"
+                          ),
+                          type = "text",
+                          class = "form-control",
+                          value = current$value,
+                          readonly = "readonly",
+                          placeholder = "No value calculated"
+                        ),
+                        
+                        tags$span(
+                          class = "input-group-btn",
+                          
+                          actionButton(
+                            inputId = paste0(
+                              "calculate_page_card_",
+                              card_number
+                            ),
+                            label = "Calculate",
+                            icon = icon("calculator"),
+                            class = "btn-default"
+                          )
+                        )
+                      )
+                    )
+                  ),
+                  
+                  tags$div(
+                    style = "flex: 1;",
+                    
+                    textInput(
+                      inputId = paste0(
+                        "page_card_",
+                        card_number,
+                        "_unit"
+                      ),
+                      label = "Unit",
+                      value = current$unit,
+                      width = "100%"
+                    )
+                  )
+                ),
+                
+                textInput(
+                  inputId = paste0(
+                    "page_card_",
+                    card_number,
+                    "_bottom_line"
+                  ),
+                  label = "Bottom line",
+                  value = current$bottom_line,
+                  width = "100%"
+                ),
+                
+                selectInput(
+                  inputId = paste0(
+                    "page_card_",
+                    card_number,
+                    "_background"
+                  ),
+                  label = "Background",
+                  choices = c(
+                    "Blue" = "blue",
+                    "Navy" = "navy"
+                  ),
+                  selected = current$background,
+                  width = "100%"
+                ),
+                
+                actionButton(
+                  inputId = paste0(
+                    "save_page_card_",
+                    card_number
+                  ),
+                  label = "Save card changes",
+                  icon = icon("save"),
+                  class = "btn-primary"
+                )
+              )
+            )
+          )
+        }
+      )
+    )
+  })
+  
   
 }
 
