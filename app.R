@@ -3271,6 +3271,8 @@ server <- function(input, output, session) {
   ## Calculate home page values ####
   active_calculation_card <- reactiveVal(NULL)
   
+  active_calculation_context <- reactiveVal("homepage")
+  
   calculation_data <- reactiveVal(NULL)
   
   card_calculations <- reactiveValues()
@@ -3303,8 +3305,11 @@ server <- function(input, output, session) {
   }
   
   show_card_calculation_modal <- function(
-    card_number
+    card_number,
+    context = "homepage"
   ) {
+    
+    active_calculation_context(context)
     
     files <- loaded_table_files()
     metadata <- loaded_table_metadata()
@@ -3354,9 +3359,17 @@ server <- function(input, output, session) {
       matrix_labels
     )
     
-    saved_calculation <- card_calculations[[
-      as.character(card_number)
-    ]]
+    saved_calculation <- if (
+      identical(context, "page")
+    ) {
+      page_card_calculations[[
+        as.character(card_number)
+      ]]
+    } else {
+      card_calculations[[
+        as.character(card_number)
+      ]]
+    }
     
     selected_matrix <- if (
       !is.null(saved_calculation) &&
@@ -3533,6 +3546,43 @@ server <- function(input, output, session) {
     }
   )
   
+  lapply(
+    seq_len(6),
+    function(card_number) {
+      
+      local({
+        
+        current_card <- card_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "calculate_page_card_",
+              current_card
+            )
+          ]],
+          {
+            req(folder())
+            req(selected_page_design())
+            
+            if (
+              current_card >
+              page_card_editor_count()
+            ) {
+              return()
+            }
+            
+            show_card_calculation_modal(
+              card_number = current_card,
+              context = "page"
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
+  
   ### Read the selected CSV ####
   observeEvent(
     input$calculation_matrix,
@@ -3551,11 +3601,24 @@ server <- function(input, output, session) {
     
     req(data_definition)
     
-    saved_calculation <- card_calculations[[
-      as.character(
-        active_calculation_card()
+    saved_calculation <- if (
+      identical(
+        active_calculation_context(),
+        "page"
       )
-    ]]
+    ) {
+      page_card_calculations[[
+        as.character(
+          active_calculation_card()
+        )
+      ]]
+    } else {
+      card_calculations[[
+        as.character(
+          active_calculation_card()
+        )
+      ]]
+    }
     
     same_saved_matrix <- (
       !is.null(saved_calculation) &&
@@ -3849,9 +3912,20 @@ server <- function(input, output, session) {
         )
       )
       
-      card_calculations[[
-        as.character(card_number)
-      ]] <- stored_calculation
+      if (
+        identical(
+          active_calculation_context(),
+          "page"
+        )
+      ) {
+        page_card_calculations[[
+          as.character(card_number)
+        ]] <- stored_calculation
+      } else {
+        card_calculations[[
+          as.character(card_number)
+        ]] <- stored_calculation
+      }
       
       display_value <- format_card_calculation_value(
         value = value,
@@ -4607,6 +4681,134 @@ server <- function(input, output, session) {
       )
     )
   })
+  
+  lapply(
+    seq_len(6),
+    function(card_number) {
+      
+      local({
+        
+        current_card <- card_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "save_page_card_",
+              current_card
+            )
+          ]],
+          {
+            req(folder())
+            req(selected_page_design())
+            
+            if (
+              current_card >
+              page_card_editor_count()
+            ) {
+              return()
+            }
+            
+            stored_calculation <- page_card_calculations[[
+              as.character(current_card)
+            ]]
+            
+            if (is.null(stored_calculation)) {
+              showNotification(
+                paste0(
+                  "Calculate a value for card ",
+                  current_card,
+                  " before saving."
+                ),
+                type = "error"
+              )
+              
+              return()
+            }
+            
+            top_line <- input[[
+              paste0(
+                "page_card_",
+                current_card,
+                "_top_line"
+              )
+            ]]
+            
+            unit <- input[[
+              paste0(
+                "page_card_",
+                current_card,
+                "_unit"
+              )
+            ]]
+            
+            bottom_line <- input[[
+              paste0(
+                "page_card_",
+                current_card,
+                "_bottom_line"
+              )
+            ]]
+            
+            background <- input[[
+              paste0(
+                "page_card_",
+                current_card,
+                "_background"
+              )
+            ]]
+            
+            tryCatch(
+              {
+                update_page_card_body(
+                  project_root = folder(),
+                  page_href = selected_page_design(),
+                  card_number = current_card,
+                  top_line = top_line,
+                  unit = unit,
+                  bottom_line = bottom_line,
+                  background = background
+                )
+                
+                update_page_card_value_js(
+                  project_root = folder(),
+                  page_href = selected_page_design(),
+                  card_number = current_card,
+                  calculation = stored_calculation
+                )
+                
+                page_card_values(
+                  read_page_card_values(
+                    project_root = folder(),
+                    page_href = selected_page_design()
+                  )
+                )
+                
+                showNotification(
+                  paste0(
+                    "Page card ",
+                    current_card,
+                    " updated."
+                  ),
+                  type = "message"
+                )
+              },
+              error = function(error) {
+                showNotification(
+                  paste(
+                    "Page card could not be updated:",
+                    conditionMessage(error)
+                  ),
+                  type = "error",
+                  duration = NULL
+                )
+              }
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
   
   
 }
