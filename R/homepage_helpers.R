@@ -2327,48 +2327,6 @@ read_homepage_card_values <- function(project_root) {
             perl = TRUE
           )
           
-          before_value <- gsub(
-            '<span class="latest-year"></span>',
-            "<<latest-year>>",
-            before_value,
-            fixed = TRUE
-          )
-          
-          before_value <- gsub(
-            '<span class="last-year"></span>',
-            "<<last-year>>",
-            before_value,
-            fixed = TRUE
-          )
-          
-          before_value <- gsub(
-            '<span class="first-year"></span>',
-            "<<first-year>>",
-            before_value,
-            fixed = TRUE
-          )
-          
-          after_value <- gsub(
-            '<span class="latest-year"></span>',
-            "<<latest-year>>",
-            after_value,
-            fixed = TRUE
-          )
-          
-          after_value <- gsub(
-            '<span class="last-year"></span>',
-            "<<last-year>>",
-            after_value,
-            fixed = TRUE
-          )
-          
-          after_value <- gsub(
-            '<span class="first-year"></span>',
-            "<<first-year>>",
-            after_value,
-            fixed = TRUE
-          )
-          
           top_line <- html_fragment_to_text(before_value)
           bottom_line <- html_fragment_to_text(after_value)
         }
