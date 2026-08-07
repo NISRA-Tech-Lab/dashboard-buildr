@@ -1195,7 +1195,9 @@ update_page_card_value_js <- function(
     )
   }
   
-  card_number <- as.integer(card_number)
+  card_number <- as.integer(
+    card_number
+  )
   
   if (
     length(card_number) != 1 ||
@@ -1203,15 +1205,23 @@ update_page_card_value_js <- function(
     card_number < 1 ||
     card_number > 6
   ) {
-    stop("A valid page card number is required.")
+    stop(
+      "A valid page card number is required."
+    )
   }
   
   if (
     is.null(calculation) ||
     is.null(calculation$matrix) ||
-    !nzchar(as.character(calculation$matrix)[1])
+    !nzchar(
+      as.character(
+        calculation$matrix
+      )[1]
+    )
   ) {
-    stop("No stored calculation was supplied.")
+    stop(
+      "No stored calculation was supplied."
+    )
   }
   
   matrix <- as.character(
@@ -1223,7 +1233,9 @@ update_page_card_value_js <- function(
   )
   
   if (length(selected_columns) == 0) {
-    stop("No value column was selected.")
+    stop(
+      "No value column was selected."
+    )
   }
   
   decimal_places <- as.integer(
@@ -1260,6 +1272,10 @@ update_page_card_value_js <- function(
     encoding = "UTF-8"
   )
   
+  #
+  # First locate the current card before changing any line numbers.
+  #
+  
   start_marker <- grep(
     "^\\s*//\\s*Insert values into page cards below\\s*$",
     js_lines
@@ -1294,7 +1310,7 @@ update_page_card_value_js <- function(
   
   if (end_marker <= start_marker) {
     stop(
-      "The page-card end marker occurs before its start marker."
+      "The page-card end marker occurs before the start marker."
     )
   }
   
@@ -1325,6 +1341,119 @@ update_page_card_value_js <- function(
     )
   }
   
+  #
+  # Find every readData declaration for this matrix in the
+  # entire JS module.
+  #
+  
+  matrix_load_pattern <- paste0(
+    "^\\s*const\\s+\\[\\s*",
+    matrix,
+    "_data\\s*,\\s*",
+    matrix,
+    "_meta\\s*\\]\\s*=\\s*await\\s+readData\\(",
+    "[\"']",
+    matrix,
+    "[\"']",
+    "\\);\\s*$"
+  )
+  
+  existing_matrix_loads <- grep(
+    matrix_load_pattern,
+    js_lines,
+    perl = TRUE
+  )
+  
+  #
+  # If a declaration already exists before this card, keep the
+  # earliest one there. Otherwise this card becomes the owner
+  # of the declaration.
+  #
+  
+  earlier_matrix_loads <- existing_matrix_loads[
+    existing_matrix_loads < current_marker
+  ]
+  
+  matrix_loaded_earlier <-
+    length(earlier_matrix_loads) > 0
+  
+  keep_matrix_load <- if (
+    matrix_loaded_earlier
+  ) {
+    min(earlier_matrix_loads)
+  } else {
+    NA_integer_
+  }
+  
+  #
+  # Remove all other declarations for this matrix.
+  #
+  # This includes declarations in chart sections below the
+  # cards and any accidental duplicates elsewhere.
+  #
+  
+  matrix_loads_to_remove <- if (
+    matrix_loaded_earlier
+  ) {
+    setdiff(
+      existing_matrix_loads,
+      keep_matrix_load
+    )
+  } else {
+    existing_matrix_loads
+  }
+  
+  if (length(matrix_loads_to_remove) > 0) {
+    js_lines <- js_lines[
+      -matrix_loads_to_remove
+    ]
+  }
+  
+  #
+  # Recalculate every marker because removing readData lines
+  # may have changed line numbers.
+  #
+  
+  start_marker <- grep(
+    "^\\s*//\\s*Insert values into page cards below\\s*$",
+    js_lines
+  )
+  
+  end_marker <- grep(
+    "^\\s*//\\s*End page card content\\s*$",
+    js_lines
+  )
+  
+  if (
+    length(start_marker) != 1 ||
+    length(end_marker) != 1
+  ) {
+    stop(
+      "Could not identify the page-card JavaScript region after removing duplicate data declarations."
+    )
+  }
+  
+  current_marker <- grep(
+    current_marker_pattern,
+    js_lines,
+    perl = TRUE
+  )
+  
+  current_marker <- current_marker[
+    current_marker > start_marker &
+      current_marker < end_marker
+  ]
+  
+  if (length(current_marker) != 1) {
+    stop(
+      paste0(
+        "Could not identify the JavaScript section for page card ",
+        card_number,
+        " after removing duplicate data declarations."
+      )
+    )
+  }
+  
   all_card_markers <- grep(
     "^\\s*//\\s*Content for card\\s+[0-9]+\\s*$",
     js_lines,
@@ -1340,7 +1469,9 @@ update_page_card_value_js <- function(
     all_card_markers > current_marker
   ]
   
-  section_end <- if (length(next_markers) > 0) {
+  section_end <- if (
+    length(next_markers) > 0
+  ) {
     min(next_markers) - 1
   } else {
     end_marker - 1
@@ -1374,37 +1505,16 @@ update_page_card_value_js <- function(
     "-value"
   )
   
-  # Only treat a declaration as reusable when it occurs
-  # earlier inside the page-card content region.
-  matrix_load_pattern <- paste0(
-    "^\\s*const\\s+\\[\\s*",
-    matrix,
-    "_data\\s*,\\s*",
-    matrix,
-    "_meta\\s*\\]\\s*=\\s*await\\s+readData\\(",
-    '["\']',
-    matrix,
-    '["\']',
-    "\\);\\s*$"
-  )
+  #
+  # Add readData here only when an earlier card does not
+  # already own the declaration.
+  #
   
-  existing_matrix_loads <- grep(
-    matrix_load_pattern,
-    js_lines,
-    perl = TRUE
-  )
-  
-  matrix_loaded_earlier <- any(
-    existing_matrix_loads > start_marker &
-      existing_matrix_loads < current_marker
-  )
-  
-  load_lines <- if (matrix_loaded_earlier) {
-    
+  load_lines <- if (
+    matrix_loaded_earlier
+  ) {
     character()
-    
   } else {
-    
     c(
       paste0(
         "    const [",
@@ -1430,13 +1540,20 @@ update_page_card_value_js <- function(
     )
   }
   
+  #
+  # Build row filters.
+  #
+  
   filter_lines <- character()
   
   if (length(js_filters) > 0) {
     
     filter_conditions <- character()
     
-    for (column_name in names(js_filters)) {
+    for (
+      column_name in
+      names(js_filters)
+    ) {
       
       filter_definition <- js_filters[[
         column_name
@@ -1475,7 +1592,9 @@ update_page_card_value_js <- function(
         
         condition <- paste0(
           "row[",
-          javascript_string(column_name),
+          javascript_string(
+            column_name
+          ),
           "] == ",
           js_values[1]
         )
@@ -1489,7 +1608,9 @@ update_page_card_value_js <- function(
             collapse = ", "
           ),
           "].includes(row[",
-          javascript_string(column_name),
+          javascript_string(
+            column_name
+          ),
           "])"
         )
       }
@@ -1530,14 +1651,22 @@ update_page_card_value_js <- function(
           is.list(filter_definition) &&
           !is.null(filter_definition$values)
         ) {
-          length(filter_definition$values)
+          length(
+            filter_definition$values
+          )
         } else {
-          length(filter_definition)
+          length(
+            filter_definition
+          )
         }
       },
       integer(1)
     ) == 1L
   )
+  
+  #
+  # Build the raw card value.
+  #
   
   if (
     length(selected_columns) == 1 &&
@@ -1564,7 +1693,9 @@ update_page_card_value_js <- function(
       ""
     )
     
-  } else if (length(selected_columns) == 1) {
+  } else if (
+    length(selected_columns) == 1
+  ) {
     
     selected_column <- javascript_string(
       selected_columns[[1]]
@@ -1613,6 +1744,10 @@ update_page_card_value_js <- function(
     )
   }
   
+  #
+  # Apply display formatting.
+  #
+  
   if (comma_separator) {
     
     formatting_lines <- c(
@@ -1635,7 +1770,9 @@ update_page_card_value_js <- function(
       "    });"
     )
     
-  } else if (decimal_places > 0) {
+  } else if (
+    decimal_places > 0
+  ) {
     
     formatting_lines <- paste0(
       "    const ",
@@ -1686,7 +1823,9 @@ update_page_card_value_js <- function(
   updated_js <- c(
     if (current_marker > 1) {
       js_lines[
-        seq_len(current_marker - 1)
+        seq_len(
+          current_marker - 1
+        )
       ]
     } else {
       character()
@@ -1694,7 +1833,10 @@ update_page_card_value_js <- function(
     
     replacement,
     
-    if (section_end < length(js_lines)) {
+    if (
+      section_end <
+      length(js_lines)
+    ) {
       js_lines[
         seq.int(
           section_end + 1,
@@ -1712,7 +1854,9 @@ update_page_card_value_js <- function(
     useBytes = TRUE
   )
   
-  invisible(js_path)
+  invisible(
+    js_path
+  )
 }
 
 clear_page_js_chart_content <- function(
