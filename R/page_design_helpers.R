@@ -3214,6 +3214,30 @@ page_chart_type_choices <- function() {
   )
 }
 
+page_bar_series_source_choices <- function() {
+  c(
+    "Value columns" = "value_columns",
+    "Category values" = "category_values"
+  )
+}
+
+
+page_bar_label_format_choices <- function() {
+  c(
+    "Number" = "",
+    "Comma separator" = ",",
+    "Percentage" = "%"
+  )
+}
+
+
+page_bar_alignment_choices <- function() {
+  c(
+    "Vertical" = "vertical",
+    "Horizontal" = "horizontal"
+  )
+}
+
 read_page_chart_types <- function(
     project_root,
     page_href
@@ -4153,7 +4177,7 @@ javascript_array_value <- function(value) {
   javascript_string(value)
 }
 
-build_line_chart_filter_condition <- function(
+build_chart_filter_condition <- function(
     column_name,
     selected_values
 ) {
@@ -4312,7 +4336,7 @@ build_page_line_chart_js <- function(
           
           filter_conditions <- c(
             filter_conditions,
-            build_line_chart_filter_condition(
+            build_chart_filter_condition(
               column_name = column_name,
               selected_values =
                 line_filters[[

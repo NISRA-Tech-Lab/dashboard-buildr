@@ -4065,6 +4065,8 @@ server <- function(input, output, session) {
   
   page_line_chart_settings <- reactiveValues()
   
+  page_bar_chart_settings <- reactiveValues()
+  
   line_chart_modal_lines <- reactiveVal(
     list()
   )
@@ -5976,7 +5978,7 @@ server <- function(input, output, session) {
     }
   )
   
-  ## Render UI for line charts ####
+  ## Render chart-specific UI ####
   lapply(
     seq_len(3),
     function(chart_number) {
@@ -6011,164 +6013,391 @@ server <- function(input, output, session) {
           
           if (
             is.null(chart_type) ||
-            !identical(chart_type, "line") ||
+            !nzchar(chart_type) ||
             is.null(matrix) ||
             !nzchar(matrix)
           ) {
             return(NULL)
           }
           
-          existing_settings <- page_line_chart_settings[[
-            as.character(current_chart)
-          ]]
+          #
+          # LINE CHART
+          #
           
-          year_mode <- if (
-            !is.null(existing_settings) &&
-            !is.null(existing_settings$year_mode)
-          ) {
-            existing_settings$year_mode
-          } else {
-            "all"
-          }
-          
-          recent_years <- if (
-            !is.null(existing_settings) &&
-            !is.null(existing_settings$recent_years)
-          ) {
-            existing_settings$recent_years
-          } else {
-            5L
-          }
-          
-          lines_summary <- if (
-            !is.null(existing_settings) &&
-            !is.null(existing_settings$lines) &&
-            length(existing_settings$lines) > 0
-          ) {
-            paste0(
-              length(existing_settings$lines),
-              if (length(existing_settings$lines) == 1) {
-                " line configured"
-              } else {
-                " lines configured"
-              }
-            )
-          } else {
-            ""
-          }
-          
-          tagList(
+          if (identical(chart_type, "line")) {
             
-            tags$hr(),
+            existing_settings <- page_line_chart_settings[[
+              as.character(current_chart)
+            ]]
             
-            h4("Line chart options"),
+            year_mode <- if (
+              !is.null(existing_settings) &&
+              !is.null(existing_settings$year_mode)
+            ) {
+              existing_settings$year_mode
+            } else {
+              "all"
+            }
             
-            radioButtons(
-              inputId = paste0(
-                "page_chart_",
-                current_chart,
-                "_year_mode"
-              ),
-              label = "Year range",
-              choices = c(
-                "All years" = "all",
-                "Most recent years" = "recent"
-              ),
-              selected = year_mode,
-              inline = TRUE
-            ),
+            recent_years <- if (
+              !is.null(existing_settings) &&
+              !is.null(existing_settings$recent_years)
+            ) {
+              existing_settings$recent_years
+            } else {
+              5L
+            }
             
-            conditionalPanel(
-              condition = sprintf(
-                "input['page_chart_%d_year_mode'] == 'recent'",
-                current_chart
-              ),
-              
-              numericInput(
-                inputId = paste0(
-                  "page_chart_",
-                  current_chart,
-                  "_recent_years"
-                ),
-                label = "Number of most recent years",
-                value = recent_years,
-                min = 1,
-                step = 1,
-                width = "220px"
-              )
-            ),
-            
-            tags$div(
-              class = "form-group",
-              
-              tags$label("Lines"),
-              
-              tags$div(
-                class = "input-group",
-                
-                tags$input(
-                  id = paste0(
-                    "page_chart_",
-                    current_chart,
-                    "_lines_summary"
-                  ),
-                  type = "text",
-                  class = "form-control",
-                  value = lines_summary,
-                  readonly = "readonly",
-                  placeholder = "No lines configured"
-                ),
-                
-                tags$span(
-                  class = "input-group-btn",
-                  
-                  actionButton(
-                    inputId = paste0(
-                      "configure_page_chart_lines_",
-                      current_chart
-                    ),
-                    label = "Configure",
-                    icon = icon("sliders"),
-                    class = "btn-default"
-                  )
-                )
-              ),
-              textInput(
-                inputId = paste0(
-                  "page_chart_",
-                  current_chart,
-                  "_unit"
-                ),
-                label = "Unit",
-                value = if (
-                  !is.null(existing_settings) &&
-                  !is.null(existing_settings$unit)
+            lines_summary <- if (
+              !is.null(existing_settings) &&
+              !is.null(existing_settings$lines) &&
+              length(existing_settings$lines) > 0
+            ) {
+              paste0(
+                length(existing_settings$lines),
+                if (
+                  length(existing_settings$lines) == 1
                 ) {
-                  existing_settings$unit
+                  " line configured"
                 } else {
-                  ""
-                },
-                width = "220px"
-              ),
-              
-              checkboxInput(
-                inputId = paste0(
-                  "page_chart_",
-                  current_chart,
-                  "_show_points"
-                ),
-                label = "Show points",
-                value = if (
-                  !is.null(existing_settings) &&
-                  !is.null(existing_settings$show_points)
-                ) {
-                  isTRUE(existing_settings$show_points)
-                } else {
-                  TRUE
+                  " lines configured"
                 }
               )
+            } else {
+              ""
+            }
+            
+            return(
+              tagList(
+                
+                tags$hr(),
+                
+                h4("Line chart options"),
+                
+                radioButtons(
+                  inputId = paste0(
+                    "page_chart_",
+                    current_chart,
+                    "_year_mode"
+                  ),
+                  label = "Year range",
+                  choices = c(
+                    "All years" = "all",
+                    "Most recent years" = "recent"
+                  ),
+                  selected = year_mode,
+                  inline = TRUE
+                ),
+                
+                conditionalPanel(
+                  condition = sprintf(
+                    "input['page_chart_%d_year_mode'] == 'recent'",
+                    current_chart
+                  ),
+                  
+                  numericInput(
+                    inputId = paste0(
+                      "page_chart_",
+                      current_chart,
+                      "_recent_years"
+                    ),
+                    label = "Number of most recent years",
+                    value = recent_years,
+                    min = 1,
+                    step = 1,
+                    width = "220px"
+                  )
+                ),
+                
+                tags$div(
+                  class = "form-group",
+                  
+                  tags$label("Lines"),
+                  
+                  tags$div(
+                    class = "input-group",
+                    
+                    tags$input(
+                      id = paste0(
+                        "page_chart_",
+                        current_chart,
+                        "_lines_summary"
+                      ),
+                      type = "text",
+                      class = "form-control",
+                      value = lines_summary,
+                      readonly = "readonly",
+                      placeholder = "No lines configured"
+                    ),
+                    
+                    tags$span(
+                      class = "input-group-btn",
+                      
+                      actionButton(
+                        inputId = paste0(
+                          "configure_page_chart_lines_",
+                          current_chart
+                        ),
+                        label = "Configure",
+                        icon = icon("sliders"),
+                        class = "btn-default"
+                      )
+                    )
+                  )
+                ),
+                
+                textInput(
+                  inputId = paste0(
+                    "page_chart_",
+                    current_chart,
+                    "_unit"
+                  ),
+                  label = "Unit",
+                  value = if (
+                    !is.null(existing_settings) &&
+                    !is.null(existing_settings$unit)
+                  ) {
+                    existing_settings$unit
+                  } else {
+                    ""
+                  },
+                  width = "220px"
+                ),
+                
+                checkboxInput(
+                  inputId = paste0(
+                    "page_chart_",
+                    current_chart,
+                    "_show_points"
+                  ),
+                  label = "Show points",
+                  value = if (
+                    !is.null(existing_settings) &&
+                    !is.null(existing_settings$show_points)
+                  ) {
+                    isTRUE(
+                      existing_settings$show_points
+                    )
+                  } else {
+                    TRUE
+                  }
+                )
+              )
             )
-          )
+          }
+          
+          #
+          # BAR CHART
+          #
+          
+          if (identical(chart_type, "bar")) {
+            
+            existing_settings <- page_bar_chart_settings[[
+              as.character(current_chart)
+            ]]
+            
+            series_source <- if (
+              !is.null(existing_settings) &&
+              !is.null(existing_settings$series_source)
+            ) {
+              existing_settings$series_source
+            } else {
+              "value_columns"
+            }
+            
+            label_format <- if (
+              !is.null(existing_settings) &&
+              !is.null(existing_settings$label_format)
+            ) {
+              existing_settings$label_format
+            } else {
+              ""
+            }
+            
+            stacked <- if (
+              !is.null(existing_settings) &&
+              !is.null(existing_settings$stacked)
+            ) {
+              isTRUE(
+                existing_settings$stacked
+              )
+            } else {
+              FALSE
+            }
+            
+            align <- if (
+              !is.null(existing_settings) &&
+              !is.null(existing_settings$align)
+            ) {
+              existing_settings$align
+            } else {
+              "vertical"
+            }
+            
+            y_label <- if (
+              !is.null(existing_settings) &&
+              !is.null(existing_settings$y_label)
+            ) {
+              existing_settings$y_label
+            } else {
+              ""
+            }
+            
+            data_summary <- if (
+              !is.null(existing_settings) &&
+              !is.null(existing_settings$configured) &&
+              isTRUE(existing_settings$configured)
+            ) {
+              "Bar data configured"
+            } else {
+              ""
+            }
+            
+            return(
+              tagList(
+                
+                tags$hr(),
+                
+                h4("Bar chart options"),
+                
+                radioButtons(
+                  inputId = paste0(
+                    "page_chart_",
+                    current_chart,
+                    "_bar_series_source"
+                  ),
+                  label = "Series source",
+                  choices =
+                    page_bar_series_source_choices(),
+                  selected = series_source
+                ),
+                
+                tags$p(
+                  class = "help-block",
+                  
+                  conditionalPanel(
+                    condition = sprintf(
+                      paste0(
+                        "input['page_chart_%d_bar_series_source'] ",
+                        "== 'value_columns'"
+                      ),
+                      current_chart
+                    ),
+                    
+                    paste(
+                      "Value columns creates one series for each",
+                      "selected numeric column."
+                    )
+                  ),
+                  
+                  conditionalPanel(
+                    condition = sprintf(
+                      paste0(
+                        "input['page_chart_%d_bar_series_source'] ",
+                        "== 'category_values'"
+                      ),
+                      current_chart
+                    ),
+                    
+                    paste(
+                      "Category values uses one numeric value column",
+                      "and creates separate series from the values",
+                      "of another category."
+                    )
+                  )
+                ),
+                
+                tags$div(
+                  class = "form-group",
+                  
+                  tags$label("Bar data"),
+                  
+                  tags$div(
+                    class = "input-group",
+                    
+                    tags$input(
+                      id = paste0(
+                        "page_chart_",
+                        current_chart,
+                        "_bar_data_summary"
+                      ),
+                      type = "text",
+                      class = "form-control",
+                      value = data_summary,
+                      readonly = "readonly",
+                      placeholder = "No bar data configured"
+                    ),
+                    
+                    tags$span(
+                      class = "input-group-btn",
+                      
+                      actionButton(
+                        inputId = paste0(
+                          "configure_page_chart_bar_",
+                          current_chart
+                        ),
+                        label = "Configure",
+                        icon = icon("sliders"),
+                        class = "btn-default"
+                      )
+                    )
+                  )
+                ),
+                
+                selectInput(
+                  inputId = paste0(
+                    "page_chart_",
+                    current_chart,
+                    "_bar_label_format"
+                  ),
+                  label = "Label format",
+                  choices =
+                    page_bar_label_format_choices(),
+                  selected = label_format,
+                  width = "220px"
+                ),
+                
+                checkboxInput(
+                  inputId = paste0(
+                    "page_chart_",
+                    current_chart,
+                    "_bar_stacked"
+                  ),
+                  label = "Stack bars",
+                  value = stacked
+                ),
+                
+                radioButtons(
+                  inputId = paste0(
+                    "page_chart_",
+                    current_chart,
+                    "_bar_align"
+                  ),
+                  label = "Bar direction",
+                  choices =
+                    page_bar_alignment_choices(),
+                  selected = align,
+                  inline = TRUE
+                ),
+                
+                textInput(
+                  inputId = paste0(
+                    "page_chart_",
+                    current_chart,
+                    "_bar_y_label"
+                  ),
+                  label = "Axis label",
+                  value = y_label,
+                  width = "100%",
+                  placeholder = paste(
+                    "For example Population, Age or %"
+                  )
+                )
+              )
+            )
+          }
+          
+          NULL
         })
         
         outputOptions(
