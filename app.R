@@ -5441,6 +5441,16 @@ server <- function(input, output, session) {
                   matrix = matrix
                 )
                 
+                if (chart_type == "line") {
+                  
+                  update_page_line_chart_js(
+                    project_root = folder(),
+                    page_href = selected_page_design(),
+                    chart_number = current_chart,
+                    line_chart_js = line_chart_js
+                  )
+                }
+                
                 refreshed_titles <- read_page_chart_titles(
                   project_root = folder(),
                   page_href = selected_page_design()

@@ -4142,3 +4142,213 @@ build_page_line_chart_js <- function(
     lines_block
   )
 }
+
+update_page_line_chart_js <- function(
+    project_root,
+    page_href,
+    chart_number,
+    line_chart_js
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$js)) {
+    stop(
+      paste0(
+        paths$js_filename,
+        " was not found."
+      )
+    )
+  }
+  
+  chart_number <- as.integer(
+    chart_number
+  )
+  
+  if (
+    length(chart_number) != 1 ||
+    is.na(chart_number) ||
+    chart_number < 1 ||
+    chart_number > 3
+  ) {
+    stop("A valid chart number is required.")
+  }
+  
+  js_lines <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  region_start <- grep(
+    "^\\s*//\\s*Insert chart content below\\s*$",
+    js_lines
+  )
+  
+  region_end <- grep(
+    "^\\s*//\\s*End chart content\\s*$",
+    js_lines
+  )
+  
+  if (
+    length(region_start) != 1 ||
+    length(region_end) != 1 ||
+    region_end <= region_start
+  ) {
+    stop(
+      "Could not uniquely identify the chart JavaScript region."
+    )
+  }
+  
+  chart_marker <- grep(
+    paste0(
+      "^\\s*//\\s*Content for chart\\s+",
+      chart_number,
+      "\\s*$"
+    ),
+    js_lines
+  )
+  
+  chart_marker <- chart_marker[
+    chart_marker > region_start &
+      chart_marker < region_end
+  ]
+  
+  if (length(chart_marker) != 1) {
+    stop(
+      paste0(
+        "Could not identify the JavaScript section for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  all_chart_markers <- grep(
+    "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
+    js_lines
+  )
+  
+  all_chart_markers <- all_chart_markers[
+    all_chart_markers > region_start &
+      all_chart_markers < region_end
+  ]
+  
+  later_markers <- all_chart_markers[
+    all_chart_markers > chart_marker
+  ]
+  
+  section_end <- if (length(later_markers) > 0) {
+    min(later_markers) - 1
+  } else {
+    region_end - 1
+  }
+  
+  section <- js_lines[
+    chart_marker:section_end
+  ]
+  
+  config_start_pattern <-
+    "^\\s*//\\s*BuildR line chart config start\\s*$"
+  
+  config_end_pattern <-
+    "^\\s*//\\s*BuildR line chart config end\\s*$"
+  
+  old_config_start <- grep(
+    config_start_pattern,
+    section
+  )
+  
+  old_config_end <- grep(
+    config_end_pattern,
+    section
+  )
+  
+  # Remove the previous generated line-chart block.
+  if (
+    length(old_config_start) == 1 &&
+    length(old_config_end) == 1 &&
+    old_config_end > old_config_start
+  ) {
+    
+    section <- section[
+      -seq.int(
+        old_config_start,
+        old_config_end
+      )
+    ]
+    
+  } else if (
+    length(old_config_start) > 0 ||
+    length(old_config_end) > 0
+  ) {
+    
+    stop(
+      paste0(
+        "Could not safely identify the existing line-chart ",
+        "configuration for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  # Remove trailing blank lines before appending the new block.
+  while (
+    length(section) > 0 &&
+    !nzchar(trimws(tail(section, 1)))
+  ) {
+    section <- head(
+      section,
+      -1
+    )
+  }
+  
+  generated_block <- c(
+    "",
+    "    // BuildR line chart config start",
+    line_chart_js,
+    "    // BuildR line chart config end",
+    "",
+    ""
+  )
+  
+  replacement_section <- c(
+    section,
+    generated_block
+  )
+  
+  updated_js <- c(
+    if (chart_marker > 1) {
+      js_lines[
+        seq_len(chart_marker - 1)
+      ]
+    } else {
+      character()
+    },
+    
+    replacement_section,
+    
+    if (section_end < length(js_lines)) {
+      js_lines[
+        seq.int(
+          section_end + 1,
+          length(js_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_js,
+    paths$js,
+    useBytes = TRUE
+  )
+  
+  invisible(paths$js)
+}
