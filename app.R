@@ -7885,6 +7885,501 @@ server <- function(input, output, session) {
     ignoreInit = TRUE
   )
   
+  ### Connect the configure pie chart buttons ####
+  
+  lapply(
+    seq_len(3),
+    function(chart_number) {
+      
+      local({
+        
+        current_chart <- chart_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "configure_page_chart_pie_",
+              current_chart
+            )
+          ]],
+          {
+            
+            req(folder())
+            req(selected_page_design())
+            
+            matrix <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_matrix"
+              )
+            ]]
+            
+            req(matrix)
+            req(nzchar(matrix))
+            
+            chart_type <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_type"
+              )
+            ]]
+            
+            req(
+              identical(
+                chart_type,
+                "pie"
+              )
+            )
+            
+            calculation_data <- tryCatch(
+              read_card_calculation_data(
+                project_root = folder(),
+                matrix = matrix
+              ),
+              error = function(error) {
+                
+                showNotification(
+                  paste(
+                    "The pie chart data could not be loaded:",
+                    conditionMessage(error)
+                  ),
+                  type = "error",
+                  duration = NULL
+                )
+                
+                NULL
+              }
+            )
+            
+            req(calculation_data)
+            
+            existing_settings <-
+              page_pie_chart_settings[[
+                as.character(
+                  current_chart
+                )
+              ]]
+            
+            if (
+              !is.null(existing_settings) &&
+              !identical(
+                existing_settings$matrix,
+                matrix
+              )
+            ) {
+              existing_settings <- NULL
+            }
+            
+            active_pie_chart(
+              current_chart
+            )
+            
+            pie_chart_data(
+              list(
+                calculation_data =
+                  calculation_data,
+                existing_settings =
+                  existing_settings
+              )
+            )
+            
+            showModal(
+              modalDialog(
+                title = paste(
+                  "Configure pie data for chart",
+                  current_chart
+                ),
+                
+                tags$p(
+                  paste(
+                    "Choose the values that should become pie slices",
+                    "and use the filters to identify one observation."
+                  )
+                ),
+                
+                uiOutput(
+                  "pie_chart_configuration_ui"
+                ),
+                
+                footer = tagList(
+                  modalButton(
+                    "Cancel"
+                  ),
+                  
+                  actionButton(
+                    inputId =
+                      "finish_pie_chart_configuration",
+                    label = "Done",
+                    class = "btn-primary"
+                  )
+                ),
+                
+                size = "l",
+                easyClose = FALSE
+              )
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
+  
+  ### Render pie chart configuration modal ####
+  
+  output$pie_chart_configuration_ui <- renderUI({
+    
+    modal_data <- pie_chart_data()
+    
+    req(modal_data)
+    
+    calculation_data <-
+      modal_data$calculation_data
+    
+    existing_settings <-
+      modal_data$existing_settings
+    
+    existing_values <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$values)
+    ) {
+      existing_settings$values
+    } else {
+      character()
+    }
+    
+    filter_inputs <- lapply(
+      calculation_data$row_filters,
+      function(filter_definition) {
+        
+        existing_filter_values <- character()
+        
+        if (
+          !is.null(existing_settings) &&
+          !is.null(existing_settings$filters) &&
+          !is.null(
+            existing_settings$filters[[
+              filter_definition$column
+            ]]
+          )
+        ) {
+          existing_filter_values <-
+            existing_settings$filters[[
+              filter_definition$column
+            ]]
+        }
+        
+        selectizeInput(
+          inputId = paste0(
+            "pie_chart_filter_",
+            filter_definition$input_id
+          ),
+          label = filter_definition$label,
+          choices = filter_definition$choices,
+          selected = existing_filter_values,
+          multiple = TRUE,
+          options = list(
+            plugins = list(
+              "remove_button"
+            ),
+            placeholder = "No filter"
+          ),
+          width = "100%"
+        )
+      }
+    )
+    
+    tagList(
+      
+      h4("Slices"),
+      
+      tags$p(
+        class = "help-block",
+        paste(
+          "Choose two or more values.",
+          "Each selected value will become one pie slice."
+        )
+      ),
+      
+      selectizeInput(
+        inputId = "pie_chart_values",
+        label = calculation_data$pivot_label,
+        choices = calculation_data$pivot_columns,
+        selected = existing_values,
+        multiple = TRUE,
+        options = list(
+          plugins = list(
+            "remove_button"
+          ),
+          placeholder = "Select pie slices"
+        ),
+        width = "100%"
+      ),
+      
+      tags$hr(),
+      
+      h4("Filters"),
+      
+      tags$p(
+        class = "help-block",
+        paste(
+          "Use the filters to identify one row of data.",
+          "Leave a filter blank only when the dataset still",
+          "contains a single matching observation."
+        )
+      ),
+      
+      if (length(filter_inputs) > 0) {
+        tagList(
+          filter_inputs
+        )
+      } else {
+        tags$em(
+          "No additional filters are available."
+        )
+      }
+    )
+  })
+  
+  ### Finish pie chart configuration ####
+  
+  observeEvent(
+    input$finish_pie_chart_configuration,
+    {
+      
+      chart_number <-
+        active_pie_chart()
+      
+      modal_data <-
+        pie_chart_data()
+      
+      req(chart_number)
+      req(modal_data)
+      
+      calculation_data <-
+        modal_data$calculation_data
+      
+      selected_values <-
+        input$pie_chart_values
+      
+      if (
+        is.null(selected_values) ||
+        length(selected_values) < 2
+      ) {
+        showNotification(
+          "Choose at least two pie slices.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      selected_filters <- list()
+      
+      filtered_data <-
+        calculation_data$data
+      
+      for (
+        filter_definition in
+        calculation_data$row_filters
+      ) {
+        
+        input_id <- paste0(
+          "pie_chart_filter_",
+          filter_definition$input_id
+        )
+        
+        selected_filter_values <-
+          input[[
+            input_id
+          ]]
+        
+        if (
+          is.null(selected_filter_values) ||
+          length(selected_filter_values) == 0
+        ) {
+          next
+        }
+        
+        selected_filter_values <-
+          as.character(
+            selected_filter_values
+          )
+        
+        selected_filters[[
+          filter_definition$column
+        ]] <- selected_filter_values
+        
+        #
+        # Validate against the current R data.
+        #
+        # Dynamic year tokens need to be converted to concrete
+        # values for this validation only.
+        #
+        validation_values <-
+          selected_filter_values
+        
+        if (isTRUE(filter_definition$is_year)) {
+          
+          year_values <- unique(
+            as.character(
+              calculation_data$data[[
+                filter_definition$column
+              ]]
+            )
+          )
+          
+          year_values <- year_values[
+            !is.na(year_values) &
+              nzchar(year_values)
+          ]
+          
+          numeric_years <- suppressWarnings(
+            as.numeric(year_values)
+          )
+          
+          if (all(!is.na(numeric_years))) {
+            year_values <- year_values[
+              order(numeric_years)
+            ]
+          }
+          
+          validation_values[
+            validation_values == "__LATEST_YEAR__"
+          ] <- tail(
+            year_values,
+            1
+          )
+          
+          validation_values[
+            validation_values == "__FIRST_YEAR__"
+          ] <- head(
+            year_values,
+            1
+          )
+          
+          if (
+            "__LAST_YEAR__" %in%
+            selected_filter_values
+          ) {
+            
+            previous_value <- if (
+              length(year_values) >= 2
+            ) {
+              year_values[
+                length(year_values) - 1
+              ]
+            } else {
+              year_values[[1]]
+            }
+            
+            validation_values[
+              validation_values ==
+                "__LAST_YEAR__"
+            ] <- previous_value
+          }
+        }
+        
+        filtered_data <- filtered_data[
+          as.character(
+            filtered_data[[
+              filter_definition$column
+            ]]
+          ) %in%
+            validation_values,
+          ,
+          drop = FALSE
+        ]
+      }
+      
+      if (nrow(filtered_data) != 1) {
+        
+        showNotification(
+          paste0(
+            "The current filters return ",
+            nrow(filtered_data),
+            " rows. A pie chart must be based on exactly one row."
+          ),
+          type = "error",
+          duration = NULL
+        )
+        
+        return()
+      }
+      
+      pie_type <- input[[
+        paste0(
+          "page_chart_",
+          chart_number,
+          "_pie_type"
+        )
+      ]]
+      
+      if (
+        is.null(pie_type) ||
+        !pie_type %in% c(
+          "pie",
+          "doughnut"
+        )
+      ) {
+        pie_type <- "pie"
+      }
+      
+      page_pie_chart_settings[[
+        as.character(
+          chart_number
+        )
+      ]] <- list(
+        configured = TRUE,
+        matrix =
+          calculation_data$matrix,
+        pivot_label =
+          calculation_data$pivot_label,
+        values =
+          as.character(
+            selected_values
+          ),
+        filters =
+          selected_filters,
+        type =
+          pie_type
+      )
+      
+      summary_text <- paste0(
+        length(selected_values),
+        if (
+          length(selected_values) == 1
+        ) {
+          " slice configured"
+        } else {
+          " slices configured"
+        }
+      )
+      
+      summary_input_id <- paste0(
+        "page_chart_",
+        chart_number,
+        "_pie_data_summary"
+      )
+      
+      shinyjs::runjs(
+        sprintf(
+          "$('#%s').val(%s);",
+          summary_input_id,
+          jsonlite::toJSON(
+            summary_text,
+            auto_unbox = TRUE
+          )
+        )
+      )
+      
+      removeModal()
+    },
+    ignoreInit = TRUE
+  )
+  
 }
 
 shinyApp(
