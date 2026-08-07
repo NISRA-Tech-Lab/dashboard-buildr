@@ -5941,3 +5941,10 @@ update_page_bar_chart_js <- function(
     paths$js
   )
 }
+
+page_pie_type_choices <- function() {
+  c(
+    "Pie" = "pie",
+    "Doughnut" = "doughnut"
+  )
+}

@@ -4071,6 +4071,12 @@ server <- function(input, output, session) {
   
   bar_chart_data <- reactiveVal(NULL)
   
+  page_pie_chart_settings <- reactiveValues()
+  
+  active_pie_chart <- reactiveVal(NULL)
+  
+  pie_chart_data <- reactiveVal(NULL)
+  
   line_chart_modal_lines <- reactiveVal(
     list()
   )
@@ -7450,6 +7456,115 @@ server <- function(input, output, session) {
                   width = "100%",
                   placeholder = paste(
                     "For example Population, Age or %"
+                  )
+                )
+              )
+            )
+          }
+          
+          #
+          # PIE CHART
+          #
+          
+          if (identical(chart_type, "pie")) {
+            
+            existing_settings <- page_pie_chart_settings[[
+              as.character(current_chart)
+            ]]
+            
+            pie_type <- if (
+              !is.null(existing_settings) &&
+              !is.null(existing_settings$type) &&
+              existing_settings$type %in% c(
+                "pie",
+                "doughnut"
+              )
+            ) {
+              existing_settings$type
+            } else {
+              "pie"
+            }
+            
+            data_summary <- if (
+              !is.null(existing_settings) &&
+              !is.null(existing_settings$values) &&
+              length(existing_settings$values) > 0
+            ) {
+              paste0(
+                length(existing_settings$values),
+                if (
+                  length(existing_settings$values) == 1
+                ) {
+                  " slice configured"
+                } else {
+                  " slices configured"
+                }
+              )
+            } else {
+              ""
+            }
+            
+            return(
+              tagList(
+                
+                tags$hr(),
+                
+                h4("Pie chart options"),
+                
+                radioButtons(
+                  inputId = paste0(
+                    "page_chart_",
+                    current_chart,
+                    "_pie_type"
+                  ),
+                  label = "Chart style",
+                  choices = page_pie_type_choices(),
+                  selected = pie_type,
+                  inline = TRUE
+                ),
+                
+                tags$div(
+                  class = "form-group",
+                  
+                  tags$label("Pie data"),
+                  
+                  tags$div(
+                    class = "input-group",
+                    
+                    tags$input(
+                      id = paste0(
+                        "page_chart_",
+                        current_chart,
+                        "_pie_data_summary"
+                      ),
+                      type = "text",
+                      class = "form-control",
+                      value = data_summary,
+                      readonly = "readonly",
+                      placeholder = "No pie data configured"
+                    ),
+                    
+                    tags$span(
+                      class = "input-group-btn",
+                      
+                      actionButton(
+                        inputId = paste0(
+                          "configure_page_chart_pie_",
+                          current_chart
+                        ),
+                        label = "Configure",
+                        icon = icon("sliders"),
+                        class = "btn-default"
+                      )
+                    )
+                  )
+                ),
+                
+                tags$p(
+                  class = "help-block",
+                  paste(
+                    "Choose two or more values to create the chart slices.",
+                    "Filters will determine the observation used for the chart."
                   )
                 )
               )
