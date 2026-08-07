@@ -4186,6 +4186,7 @@ build_page_line_chart_js <- function(
     chart_number,
     matrix,
     year_column,
+    pivot_label,
     year_mode,
     recent_years,
     lines,
@@ -4409,6 +4410,240 @@ build_page_line_chart_js <- function(
     "    });"
   )
   
+  query_variable <- paste0(
+    "line_chart_",
+    chart_number,
+    "_query"
+  )
+  
+  #
+  # Work out which ordinary row-filter dimensions are restricted
+  # consistently across every configured line.
+  #
+  filter_names <- unique(
+    unlist(
+      lapply(
+        lines,
+        function(line_definition) {
+          names(
+            line_definition$filters
+          )
+        }
+      ),
+      use.names = FALSE
+    )
+  )
+  
+  query_entries <- character()
+  
+  #
+  # Only include the time dimension when the user selected
+  # "Most recent n years". "All years" means no query restriction.
+  #
+  if (identical(year_mode, "recent")) {
+    query_entries <- c(
+      query_entries,
+      paste0(
+        "        ",
+        javascript_string(year_column),
+        ": line_chart_",
+        chart_number,
+        "_years"
+      )
+    )
+  }
+  
+  #
+  # Add ordinary filter dimensions.
+  #
+  # If one line leaves a dimension unrestricted, omit that
+  # dimension from the download query.
+  #
+  for (filter_name in filter_names) {
+    
+    line_has_filter <- vapply(
+      lines,
+      function(line_definition) {
+        !is.null(
+          line_definition$filters[[
+            filter_name
+          ]]
+        ) &&
+          length(
+            line_definition$filters[[
+              filter_name
+            ]]
+          ) > 0
+      },
+      logical(1)
+    )
+    
+    if (!all(line_has_filter)) {
+      next
+    }
+    
+    selected_values <- unique(
+      unlist(
+        lapply(
+          lines,
+          function(line_definition) {
+            as.character(
+              line_definition$filters[[
+                filter_name
+              ]]
+            )
+          }
+        ),
+        use.names = FALSE
+      )
+    )
+    
+    if (length(selected_values) == 1) {
+      
+      query_entries <- c(
+        query_entries,
+        paste0(
+          "        ",
+          javascript_string(filter_name),
+          ": ",
+          javascript_string(
+            selected_values
+          )
+        )
+      )
+      
+    } else {
+      
+      query_entries <- c(
+        query_entries,
+        paste0(
+          "        ",
+          javascript_string(filter_name),
+          ": [",
+          paste(
+            vapply(
+              selected_values,
+              javascript_string,
+              character(1)
+            ),
+            collapse = ", "
+          ),
+          "]"
+        )
+      )
+    }
+  }
+  
+  #
+  # The pivot variable is represented by the selected CSV value
+  # columns, so add all unique line columns under the JSON
+  # variable name.
+  #
+  pivot_values <- unique(
+    vapply(
+      lines,
+      function(line_definition) {
+        as.character(
+          line_definition$column
+        )[1]
+      },
+      character(1)
+    )
+  )
+  
+  if (
+    !is.null(pivot_label) &&
+    nzchar(pivot_label) &&
+    length(pivot_values) > 0
+  ) {
+    
+    if (length(pivot_values) == 1) {
+      
+      query_entries <- c(
+        query_entries,
+        paste0(
+          "        ",
+          javascript_string(pivot_label),
+          ": ",
+          javascript_string(
+            pivot_values
+          )
+        )
+      )
+      
+    } else {
+      
+      query_entries <- c(
+        query_entries,
+        paste0(
+          "        ",
+          javascript_string(pivot_label),
+          ": [",
+          paste(
+            vapply(
+              pivot_values,
+              javascript_string,
+              character(1)
+            ),
+            collapse = ", "
+          ),
+          "]"
+        )
+      )
+    }
+  }
+  
+  query_block <- if (length(query_entries) == 0) {
+    
+    c(
+      paste0(
+        "    const ",
+        query_variable,
+        " = {};"
+      )
+    )
+    
+  } else {
+    
+    c(
+      paste0(
+        "    const ",
+        query_variable,
+        " = {"
+      ),
+      paste0(
+        query_entries,
+        collapse = ",\n"
+      ),
+      "    };"
+    )
+  }
+  
+  download_call <- c(
+    "",
+    "    downloadButton(",
+    paste0(
+      '        "chart-',
+      chart_number,
+      '-capture",'
+    ),
+    paste0(
+      "        ",
+      javascript_string(matrix),
+      ","
+    ),
+    paste0(
+      "        ",
+      matrix,
+      "_meta.updated,"
+    ),
+    paste0(
+      "        ",
+      query_variable
+    ),
+    "    );"
+  )
+  
   lines_block <- c(
     paste0(
       "    const line_chart_",
@@ -4428,7 +4663,10 @@ build_page_line_chart_js <- function(
     lines_block,
     "",
     labels_block,
-    chart_call
+    chart_call,
+    "",
+    query_block,
+    download_call
   )
 }
 

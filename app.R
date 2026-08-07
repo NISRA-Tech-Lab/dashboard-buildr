@@ -5411,6 +5411,7 @@ server <- function(input, output, session) {
                 chart_number = current_chart,
                 matrix = line_settings$matrix,
                 year_column = line_settings$year_column,
+                pivot_label = line_settings$pivot_label,
                 year_mode = year_mode,
                 recent_years = recent_years,
                 lines = line_settings$lines,
@@ -5826,6 +5827,7 @@ server <- function(input, output, session) {
         matrix = chart_data$calculation_data$matrix,
         year_column = chart_data$column,
         available_years = chart_data$values,
+        pivot_label = chart_data$calculation_data$pivot_label,
         year_mode = year_mode,
         recent_years = as.integer(recent_years),
         lines = lines
