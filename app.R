@@ -4067,6 +4067,10 @@ server <- function(input, output, session) {
   
   page_bar_chart_settings <- reactiveValues()
   
+  active_bar_chart <- reactiveVal(NULL)
+  
+  bar_chart_data <- reactiveVal(NULL)
+  
   line_chart_modal_lines <- reactiveVal(
     list()
   )
@@ -5668,6 +5672,971 @@ server <- function(input, output, session) {
         )
       })
     }
+  )
+  
+  
+  ### Connect the configure bar chart buttons ####
+  
+  lapply(
+    seq_len(3),
+    function(chart_number) {
+      
+      local({
+        
+        current_chart <- chart_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "configure_page_chart_bar_",
+              current_chart
+            )
+          ]],
+          {
+            
+            req(folder())
+            req(selected_page_design())
+            
+            matrix <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_matrix"
+              )
+            ]]
+            
+            req(matrix)
+            req(nzchar(matrix))
+            
+            chart_type <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_type"
+              )
+            ]]
+            
+            req(
+              identical(
+                chart_type,
+                "bar"
+              )
+            )
+            
+            series_source <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_bar_series_source"
+              )
+            ]]
+            
+            if (
+              is.null(series_source) ||
+              !series_source %in% c(
+                "value_columns",
+                "category_values"
+              )
+            ) {
+              series_source <- "value_columns"
+            }
+            
+            calculation_data <- tryCatch(
+              read_card_calculation_data(
+                project_root = folder(),
+                matrix = matrix
+              ),
+              error = function(error) {
+                
+                showNotification(
+                  paste(
+                    "The bar chart data could not be loaded:",
+                    conditionMessage(error)
+                  ),
+                  type = "error",
+                  duration = NULL
+                )
+                
+                NULL
+              }
+            )
+            
+            req(calculation_data)
+            
+            existing_settings <-
+              page_bar_chart_settings[[
+                as.character(
+                  current_chart
+                )
+              ]]
+            
+            #
+            # If the matrix or series mode has changed, do not
+            # try to restore an incompatible old configuration.
+            #
+            if (
+              !is.null(existing_settings) &&
+              (
+                !identical(
+                  existing_settings$matrix,
+                  matrix
+                ) ||
+                !identical(
+                  existing_settings$series_source,
+                  series_source
+                )
+              )
+            ) {
+              existing_settings <- NULL
+            }
+            
+            active_bar_chart(
+              current_chart
+            )
+            
+            bar_chart_data(
+              list(
+                calculation_data =
+                  calculation_data,
+                series_source =
+                  series_source,
+                existing_settings =
+                  existing_settings
+              )
+            )
+            
+            showModal(
+              modalDialog(
+                title = paste(
+                  "Configure bar data for chart",
+                  current_chart
+                ),
+                
+                tags$p(
+                  paste(
+                    "Choose the category axis, the values used",
+                    "to create the bar series, and any additional",
+                    "filters required for the chart."
+                  )
+                ),
+                
+                uiOutput(
+                  "bar_chart_configuration_ui"
+                ),
+                
+                footer = tagList(
+                  modalButton(
+                    "Cancel"
+                  ),
+                  
+                  actionButton(
+                    inputId =
+                      "finish_bar_chart_configuration",
+                    label = "Done",
+                    class = "btn-primary"
+                  )
+                ),
+                
+                size = "l",
+                easyClose = FALSE
+              )
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
+  
+  
+  ### Render bar chart configuration modal ####
+  
+  output$bar_chart_configuration_ui <- renderUI({
+    
+    modal_data <- bar_chart_data()
+    
+    req(modal_data)
+    
+    calculation_data <-
+      modal_data$calculation_data
+    
+    series_source <-
+      modal_data$series_source
+    
+    existing_settings <-
+      modal_data$existing_settings
+    
+    row_filters <-
+      calculation_data$row_filters
+    
+    #
+    # Variables available for the category axis.
+    #
+    row_variable_names <- vapply(
+      row_filters,
+      function(filter_definition) {
+        filter_definition$column
+      },
+      character(1)
+    )
+    
+    category_choices <- stats::setNames(
+      row_variable_names,
+      row_variable_names
+    )
+    
+    existing_category <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$categories) &&
+      existing_settings$categories %in%
+      row_variable_names
+    ) {
+      existing_settings$categories
+    } else {
+      ""
+    }
+    
+    selected_category <- input$bar_chart_categories
+    
+    if (
+      is.null(selected_category) ||
+      !selected_category %in%
+      row_variable_names
+    ) {
+      selected_category <-
+        existing_category
+    }
+    
+    #
+    # Find metadata for the currently selected category.
+    #
+    category_definition <- NULL
+    
+    if (nzchar(selected_category)) {
+      
+      matching_category <- Filter(
+        function(filter_definition) {
+          identical(
+            filter_definition$column,
+            selected_category
+          )
+        },
+        row_filters
+      )
+      
+      if (length(matching_category) == 1) {
+        category_definition <-
+          matching_category[[1]]
+      }
+    }
+    
+    category_value_choices <- if (
+      !is.null(category_definition)
+    ) {
+      category_definition$choices
+    } else {
+      character()
+    }
+    
+    existing_category_values <- if (
+      !is.null(existing_settings) &&
+      !is.null(
+        existing_settings$category_values
+      )
+    ) {
+      existing_settings$category_values
+    } else {
+      character()
+    }
+    
+    #
+    # Category-values mode also needs a variable whose
+    # values become separate bar series.
+    #
+    available_bar_variables <-
+      setdiff(
+        row_variable_names,
+        selected_category
+      )
+    
+    existing_bars <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$bars) &&
+      existing_settings$bars %in%
+      available_bar_variables
+    ) {
+      existing_settings$bars
+    } else {
+      ""
+    }
+    
+    selected_bars <- input$bar_chart_bars
+    
+    if (
+      is.null(selected_bars) ||
+      !selected_bars %in%
+      available_bar_variables
+    ) {
+      selected_bars <- existing_bars
+    }
+    
+    bars_definition <- NULL
+    
+    if (
+      identical(
+        series_source,
+        "category_values"
+      ) &&
+      nzchar(selected_bars)
+    ) {
+      
+      matching_bars <- Filter(
+        function(filter_definition) {
+          identical(
+            filter_definition$column,
+            selected_bars
+          )
+        },
+        row_filters
+      )
+      
+      if (length(matching_bars) == 1) {
+        bars_definition <-
+          matching_bars[[1]]
+      }
+    }
+    
+    bar_value_choices <- if (
+      !is.null(bars_definition)
+    ) {
+      bars_definition$choices
+    } else {
+      character()
+    }
+    
+    existing_bar_values <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$bar_values)
+    ) {
+      existing_settings$bar_values
+    } else {
+      character()
+    }
+    
+    existing_values <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$values)
+    ) {
+      existing_settings$values
+    } else {
+      character()
+    }
+    
+    #
+    # Ordinary filters exclude:
+    #
+    #   * the category variable
+    #   * the bars variable in Category-values mode
+    #
+    ordinary_filters <- Filter(
+      function(filter_definition) {
+        
+        filter_column <-
+          filter_definition$column
+        
+        if (
+          nzchar(selected_category) &&
+          identical(
+            filter_column,
+            selected_category
+          )
+        ) {
+          return(FALSE)
+        }
+        
+        if (
+          identical(
+            series_source,
+            "category_values"
+          ) &&
+          nzchar(selected_bars) &&
+          identical(
+            filter_column,
+            selected_bars
+          )
+        ) {
+          return(FALSE)
+        }
+        
+        TRUE
+      },
+      row_filters
+    )
+    
+    filter_inputs <- lapply(
+      ordinary_filters,
+      function(filter_definition) {
+        
+        existing_filter_values <- character()
+        
+        if (
+          !is.null(existing_settings) &&
+          !is.null(existing_settings$filters) &&
+          !is.null(
+            existing_settings$filters[[
+              filter_definition$column
+            ]]
+          )
+        ) {
+          existing_filter_values <-
+            existing_settings$filters[[
+              filter_definition$column
+            ]]
+        }
+        
+        selectizeInput(
+          inputId = paste0(
+            "bar_chart_filter_",
+            filter_definition$input_id
+          ),
+          label =
+            filter_definition$label,
+          choices =
+            filter_definition$choices,
+          selected =
+            existing_filter_values,
+          multiple = TRUE,
+          options = list(
+            plugins = list(
+              "remove_button"
+            ),
+            placeholder = "No filter"
+          ),
+          width = "100%"
+        )
+      }
+    )
+    
+    tagList(
+      
+      h4("Categories"),
+      
+      tags$p(
+        class = "help-block",
+        paste(
+          "Choose the variable whose values will appear",
+          "along the category axis."
+        )
+      ),
+      
+      selectInput(
+        inputId = "bar_chart_categories",
+        label = "Category variable",
+        choices = c(
+          "Select a variable" = "",
+          category_choices
+        ),
+        selected =
+          selected_category,
+        width = "100%"
+      ),
+      
+      if (nzchar(selected_category)) {
+        
+        selectizeInput(
+          inputId =
+            "bar_chart_category_values",
+          label = paste0(
+            selected_category,
+            " values"
+          ),
+          choices =
+            category_value_choices,
+          selected =
+            existing_category_values,
+          multiple = TRUE,
+          options = list(
+            plugins = list(
+              "remove_button"
+            ),
+            placeholder =
+              "All values"
+          ),
+          width = "100%"
+        )
+      },
+      
+      tags$hr(),
+      
+      h4("Series"),
+      
+      if (
+        identical(
+          series_source,
+          "value_columns"
+        )
+      ) {
+        
+        tagList(
+          
+          tags$p(
+            class = "help-block",
+            paste(
+              "Each selected value column will become",
+              "a separate bar series."
+            )
+          ),
+          
+          selectizeInput(
+            inputId =
+              "bar_chart_value_columns",
+            label =
+              calculation_data$pivot_label,
+            choices =
+              calculation_data$pivot_columns,
+            selected =
+              existing_values,
+            multiple = TRUE,
+            options = list(
+              plugins = list(
+                "remove_button"
+              ),
+              placeholder =
+                "Select one or more values"
+            ),
+            width = "100%"
+          )
+        )
+        
+      } else {
+        
+        tagList(
+          
+          tags$p(
+            class = "help-block",
+            paste(
+              "Choose one numeric value column, then choose",
+              "the category whose values should become the",
+              "separate bar series."
+            )
+          ),
+          
+          selectInput(
+            inputId =
+              "bar_chart_value_column",
+            label =
+              calculation_data$pivot_label,
+            choices = c(
+              "Select a value" = "",
+              calculation_data$pivot_columns
+            ),
+            selected = if (
+              length(existing_values) > 0
+            ) {
+              existing_values[[1]]
+            } else {
+              ""
+            },
+            width = "100%"
+          ),
+          
+          selectInput(
+            inputId = "bar_chart_bars",
+            label = "Series variable",
+            choices = c(
+              "Select a variable" = "",
+              stats::setNames(
+                available_bar_variables,
+                available_bar_variables
+              )
+            ),
+            selected =
+              selected_bars,
+            width = "100%"
+          ),
+          
+          if (nzchar(selected_bars)) {
+            
+            selectizeInput(
+              inputId =
+                "bar_chart_bar_values",
+              label = paste0(
+                selected_bars,
+                " values"
+              ),
+              choices =
+                bar_value_choices,
+              selected =
+                existing_bar_values,
+              multiple = TRUE,
+              options = list(
+                plugins = list(
+                  "remove_button"
+                ),
+                placeholder =
+                  "Select series"
+              ),
+              width = "100%"
+            )
+          }
+        )
+      },
+      
+      tags$hr(),
+      
+      h4("Additional filters"),
+      
+      tags$p(
+        class = "help-block",
+        paste(
+          "Leave a filter blank to include all values.",
+          "Year filters include dynamic Latest year,",
+          "Previous year and Earliest year options."
+        )
+      ),
+      
+      if (length(filter_inputs) > 0) {
+        tagList(
+          filter_inputs
+        )
+      } else {
+        tags$em(
+          "No additional filters are available."
+        )
+      }
+    )
+  })
+  
+  
+  ### Finish bar chart configuration ####
+  
+  observeEvent(
+    input$finish_bar_chart_configuration,
+    {
+      
+      chart_number <-
+        active_bar_chart()
+      
+      modal_data <-
+        bar_chart_data()
+      
+      req(chart_number)
+      req(modal_data)
+      
+      calculation_data <-
+        modal_data$calculation_data
+      
+      series_source <-
+        modal_data$series_source
+      
+      categories <-
+        input$bar_chart_categories
+      
+      if (
+        is.null(categories) ||
+        !nzchar(categories)
+      ) {
+        showNotification(
+          "Choose a category variable.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      category_values <-
+        input$bar_chart_category_values
+      
+      if (is.null(category_values)) {
+        category_values <-
+          character()
+      }
+      
+      #
+      # Read the value / series configuration.
+      #
+      if (
+        identical(
+          series_source,
+          "value_columns"
+        )
+      ) {
+        
+        values <-
+          input$bar_chart_value_columns
+        
+        if (
+          is.null(values) ||
+          length(values) == 0
+        ) {
+          showNotification(
+            paste(
+              "Select at least one value",
+              "column for the bar chart."
+            ),
+            type = "error"
+          )
+          
+          return()
+        }
+        
+        bars <- ""
+        
+        bar_values <-
+          character()
+        
+      } else {
+        
+        value <-
+          input$bar_chart_value_column
+        
+        if (
+          is.null(value) ||
+          !nzchar(value)
+        ) {
+          showNotification(
+            "Choose a value column.",
+            type = "error"
+          )
+          
+          return()
+        }
+        
+        values <- as.character(
+          value
+        )
+        
+        bars <- input$bar_chart_bars
+        
+        if (
+          is.null(bars) ||
+          !nzchar(bars)
+        ) {
+          showNotification(
+            "Choose a series variable.",
+            type = "error"
+          )
+          
+          return()
+        }
+        
+        bar_values <-
+          input$bar_chart_bar_values
+        
+        if (
+          is.null(bar_values) ||
+          length(bar_values) == 0
+        ) {
+          showNotification(
+            paste(
+              "Select at least one value",
+              "for the series variable."
+            ),
+            type = "error"
+          )
+          
+          return()
+        }
+      }
+      
+      #
+      # Capture remaining filters.
+      #
+      selected_filters <- list()
+      
+      for (
+        filter_definition in
+        calculation_data$row_filters
+      ) {
+        
+        column_name <-
+          filter_definition$column
+        
+        #
+        # Category and series dimensions are stored
+        # separately rather than duplicated here.
+        #
+        if (
+          identical(
+            column_name,
+            categories
+          )
+        ) {
+          next
+        }
+        
+        if (
+          identical(
+            series_source,
+            "category_values"
+          ) &&
+          identical(
+            column_name,
+            bars
+          )
+        ) {
+          next
+        }
+        
+        input_id <- paste0(
+          "bar_chart_filter_",
+          filter_definition$input_id
+        )
+        
+        selected_values <-
+          input[[
+            input_id
+          ]]
+        
+        if (
+          !is.null(selected_values) &&
+          length(selected_values) > 0
+        ) {
+          selected_filters[[
+            column_name
+          ]] <- as.character(
+            selected_values
+          )
+        }
+      }
+      
+      #
+      # Preserve the presentation controls already
+      # entered in the accordion.
+      #
+      label_format <- input[[
+        paste0(
+          "page_chart_",
+          chart_number,
+          "_bar_label_format"
+        )
+      ]]
+      
+      stacked <- input[[
+        paste0(
+          "page_chart_",
+          chart_number,
+          "_bar_stacked"
+        )
+      ]]
+      
+      align <- input[[
+        paste0(
+          "page_chart_",
+          chart_number,
+          "_bar_align"
+        )
+      ]]
+      
+      y_label <- input[[
+        paste0(
+          "page_chart_",
+          chart_number,
+          "_bar_y_label"
+        )
+      ]]
+      
+      if (is.null(label_format)) {
+        label_format <- ""
+      }
+      
+      if (is.null(stacked)) {
+        stacked <- FALSE
+      }
+      
+      if (is.null(align)) {
+        align <- "vertical"
+      }
+      
+      if (is.null(y_label)) {
+        y_label <- ""
+      }
+      
+      page_bar_chart_settings[[
+        as.character(
+          chart_number
+        )
+      ]] <- list(
+        configured = TRUE,
+        matrix =
+          calculation_data$matrix,
+        pivot_label =
+          calculation_data$pivot_label,
+        series_source =
+          series_source,
+        categories =
+          categories,
+        category_values =
+          as.character(
+            category_values
+          ),
+        values =
+          as.character(
+            values
+          ),
+        bars =
+          bars,
+        bar_values =
+          as.character(
+            bar_values
+          ),
+        filters =
+          selected_filters,
+        label_format =
+          label_format,
+        stacked =
+          isTRUE(stacked),
+        align =
+          align,
+        y_label =
+          y_label
+      )
+      
+      summary_text <- if (
+        identical(
+          series_source,
+          "value_columns"
+        )
+      ) {
+        paste0(
+          length(values),
+          if (length(values) == 1) {
+            " value series configured"
+          } else {
+            " value series configured"
+          }
+        )
+      } else {
+        paste0(
+          length(bar_values),
+          if (length(bar_values) == 1) {
+            " category series configured"
+          } else {
+            " category series configured"
+          }
+        )
+      }
+      
+      summary_input_id <- paste0(
+        "page_chart_",
+        chart_number,
+        "_bar_data_summary"
+      )
+      
+      shinyjs::runjs(
+        sprintf(
+          "$('#%s').val(%s);",
+          summary_input_id,
+          jsonlite::toJSON(
+            summary_text,
+            auto_unbox = TRUE
+          )
+        )
+      )
+      
+      removeModal()
+    },
+    ignoreInit = TRUE
   )
   
   ### Render the line selection modal ####

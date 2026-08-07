@@ -4665,9 +4665,9 @@ build_page_line_chart_js <- function(
       ","
     ),
     paste0(
-      "        ",
+      "        dateFormat(",
       matrix,
-      "_meta.updated,"
+      "_meta.updated),"
     ),
     paste0(
       "        ",
