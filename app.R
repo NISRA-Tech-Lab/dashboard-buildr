@@ -5279,21 +5279,6 @@ server <- function(input, output, session) {
                   )
                 ),
                 
-                tags$div(
-                  class = "well well-sm",
-                  
-                  tags$strong("Chart preview"),
-                  
-                  tags$p(
-                    style = paste(
-                      "margin-top: 8px;",
-                      "margin-bottom: 0;"
-                    ),
-                    
-                    "A chart preview will appear here."
-                  )
-                ),
-                
                 actionButton(
                   inputId = paste0(
                     "save_page_chart_",
