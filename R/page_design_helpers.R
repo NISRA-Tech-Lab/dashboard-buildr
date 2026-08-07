@@ -2626,6 +2626,10 @@ clear_page_design_files <- function(
     )$card_starts
   )
   
+  updated_html <- normalise_page_chart_capture_ids(
+    updated_html
+  )
+  
   tryCatch(
     {
       writeLines(
@@ -3106,6 +3110,10 @@ update_page_chart_count <- function(
     } else {
       character()
     }
+  )
+  
+  updated_html <- normalise_page_chart_capture_ids(
+    updated_html
   )
   
   tryCatch(
@@ -5070,4 +5078,68 @@ update_page_line_chart_html <- function(
   invisible(
     paths$html
   )
+}
+
+normalise_page_chart_capture_ids <- function(
+    html_lines
+) {
+  
+  chart_region <- find_page_chart_cards_region(
+    html_lines
+  )
+  
+  if (length(chart_region$chart_starts) == 0) {
+    return(html_lines)
+  }
+  
+  for (
+    chart_number in
+    seq_along(chart_region$chart_starts)
+  ) {
+    
+    chart_start <- chart_region$chart_starts[
+      chart_number
+    ]
+    
+    chart_end <- find_closing_div(
+      html_lines,
+      chart_start
+    )
+    
+    capture_candidates <- grep(
+      '<div\\b[^>]*id=["\'][^"\']+["\']',
+      html_lines,
+      perl = TRUE
+    )
+    
+    capture_candidates <- capture_candidates[
+      capture_candidates > chart_start &
+        capture_candidates < chart_end
+    ]
+    
+    if (length(capture_candidates) == 0) {
+      stop(
+        paste0(
+          "Could not identify the capture wrapper for chart ",
+          chart_number,
+          "."
+        )
+      )
+    }
+    
+    capture_line <- capture_candidates[[1]]
+    
+    html_lines[capture_line] <- sub(
+      '(id\\s*=\\s*["\'])[^"\']+(["\'])',
+      paste0(
+        "\\1chart-",
+        chart_number,
+        "-capture\\2"
+      ),
+      html_lines[capture_line],
+      perl = TRUE
+    )
+  }
+  
+  html_lines
 }
