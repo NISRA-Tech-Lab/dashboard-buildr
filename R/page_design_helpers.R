@@ -4042,7 +4042,8 @@ build_page_line_chart_js <- function(
     chart_number,
     matrix,
     year_column,
-    years,
+    year_mode,
+    recent_years,
     filters,
     columns
 ) {
@@ -4051,61 +4052,97 @@ build_page_line_chart_js <- function(
     "_data"
   )
   
-  years_js <- paste(
-    vapply(
-      years,
-      javascript_array_value,
-      character(1)
-    ),
-    collapse = ", "
-  )
-  
-  years_lines <- paste0(
-    "    const line_chart_",
+  years_variable <- paste0(
+    "line_chart_",
     chart_number,
-    "_years = [",
-    years_js,
-    "];"
+    "_years"
   )
   
-  all_filters <- c(
-    list(
-      stats::setNames(
-        list(years),
-        year_column
+  years_lines <- c(
+    paste0(
+      "    let ",
+      years_variable,
+      " = ",
+      data_variable
+    ),
+    paste0(
+      "        .map(col => col[",
+      javascript_string(year_column),
+      "]);"
+    ),
+    "",
+    paste0(
+      "    ",
+      years_variable,
+      " = [...new Set(",
+      years_variable,
+      ")];"
+    )
+  )
+  
+  if (identical(year_mode, "recent")) {
+    
+    recent_years <- as.integer(
+      recent_years
+    )
+    
+    if (
+      length(recent_years) != 1 ||
+      is.na(recent_years) ||
+      recent_years < 1
+    ) {
+      stop(
+        "The number of recent years must be at least 1."
       )
-    )[[1]],
-    filters
+    }
+    
+    years_lines <- c(
+      years_lines,
+      "",
+      paste0(
+        "    ",
+        years_variable,
+        " = ",
+        years_variable,
+        ".slice(-",
+        recent_years,
+        ");"
+      )
+    )
+  }
+  
+  all_filters <- filters
+  
+  filter_conditions <- c(
+    paste0(
+      "line_chart_",
+      chart_number,
+      "_years.includes(row[",
+      javascript_string(year_column),
+      "])"
+    )
   )
   
-  filter_conditions <- character()
-  
-  for (column_name in names(all_filters)) {
+  for (column_name in names(filters)) {
     filter_conditions <- c(
       filter_conditions,
       build_line_chart_filter_condition(
         column_name = column_name,
-        selected_values = all_filters[[
+        selected_values = filters[[
           column_name
         ]]
       )
     )
   }
   
-  filter_code <- if (
-    length(filter_conditions) > 0
-  ) {
-    paste0(
-      ".filter(row => ",
-      paste(
-        filter_conditions,
-        collapse = " && "
-      ),
-      ")"
-    )
-  } else {
-    ""
-  }
+  filter_code <- paste0(
+    ".filter(row => ",
+    paste(
+      filter_conditions,
+      collapse = " && "
+    ),
+    ")"
+  )
   
   series_lines <- vapply(
     columns,

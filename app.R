@@ -5390,17 +5390,14 @@ server <- function(input, output, session) {
                 )
               ]]
               
-              selected_years <- select_line_chart_years(
-                available_years = line_settings$available_years,
-                mode = year_mode,
-                recent_years = recent_years
-              )
+              
               
               line_chart_js <- build_page_line_chart_js(
                 chart_number = current_chart,
                 matrix = line_settings$matrix,
                 year_column = line_settings$year_column,
-                years = selected_years,
+                year_mode = year_mode,
+                recent_years = recent_years,
                 filters = line_settings$filters,
                 columns = line_settings$columns
               )
