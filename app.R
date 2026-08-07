@@ -5572,6 +5572,7 @@ server <- function(input, output, session) {
             if (length(existing_lines) == 0) {
               existing_lines <- list(
                 list(
+                  label = "",
                   filters = list(),
                   column = ""
                 )
@@ -5712,6 +5713,28 @@ server <- function(input, output, session) {
           paste0(
             "Choose a value for line ",
             which(invalid_lines)[1],
+            "."
+          ),
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      invalid_labels <- vapply(
+        lines,
+        function(line) {
+          is.null(line$label) ||
+            !nzchar(trimws(line$label))
+        },
+        logical(1)
+      )
+      
+      if (any(invalid_labels)) {
+        showNotification(
+          paste0(
+            "Enter a label for line ",
+            which(invalid_labels)[1],
             "."
           ),
           type = "error"
@@ -6170,6 +6193,20 @@ server <- function(input, output, session) {
         )
       ),
       
+      textInput(
+        inputId = "line_chart_line_label",
+        label = "Line label",
+        value = if (
+          !is.null(current_line$label)
+        ) {
+          current_line$label
+        } else {
+          ""
+        },
+        width = "100%",
+        placeholder = "Enter a label for this line"
+      ),
+      
       filter_inputs,
       
       selectInput(
@@ -6255,7 +6292,14 @@ server <- function(input, output, session) {
       column <- ""
     }
     
+    label <- input$line_chart_line_label
+    
+    if (is.null(label)) {
+      label <- ""
+    }
+    
     list(
+      label = trimws(label),
       filters = selected_filters,
       column = column
     )
@@ -6314,6 +6358,7 @@ server <- function(input, output, session) {
         capture_current_line_chart_line()
       
       lines[[length(lines) + 1L]] <- list(
+        label = "",
         filters = list(),
         column = ""
       )

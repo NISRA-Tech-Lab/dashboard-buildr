@@ -4332,6 +4332,27 @@ build_page_line_chart_js <- function(
     character(1)
   )
   
+  line_labels <- vapply(
+    lines,
+    function(line_definition) {
+      javascript_string(
+        line_definition$label
+      )
+    },
+    character(1)
+  )
+  
+  labels_block <- paste0(
+    "    const line_chart_",
+    chart_number,
+    "_labels = [",
+    paste(
+      line_labels,
+      collapse = ", "
+    ),
+    "];"
+  )
+  
   lines_block <- c(
     paste0(
       "    const line_chart_",
@@ -4348,7 +4369,9 @@ build_page_line_chart_js <- function(
   c(
     years_lines,
     "",
-    lines_block
+    lines_block,
+    "",
+    labels_block
   )
 }
 
