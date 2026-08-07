@@ -1623,7 +1623,7 @@ update_page_card_value_js <- function(
     
     combined_condition <- paste(
       filter_conditions,
-      collapse = " && "
+      collapse = " &&\n"
     )
     
     filter_lines <- paste0(
@@ -4321,7 +4321,7 @@ build_page_line_chart_js <- function(
         "            .filter(row => ",
         paste(
           filter_conditions,
-          collapse = " && "
+          collapse = " &&\n                "
         ),
         ")\n",
         "            .map(col => col[",

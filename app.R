@@ -5390,7 +5390,7 @@ server <- function(input, output, session) {
               ]]
               
               if (is.null(unit)) {
-                unit <- "%"
+                unit <- ""
               }
               
               show_points <- input[[
@@ -6040,12 +6040,16 @@ server <- function(input, output, session) {
           
           lines_summary <- if (
             !is.null(existing_settings) &&
-            !is.null(existing_settings$columns) &&
-            length(existing_settings$columns) > 0
+            !is.null(existing_settings$lines) &&
+            length(existing_settings$lines) > 0
           ) {
-            paste(
-              existing_settings$columns,
-              collapse = ", "
+            paste0(
+              length(existing_settings$lines),
+              if (length(existing_settings$lines) == 1) {
+                " line configured"
+              } else {
+                " lines configured"
+              }
             )
           } else {
             ""
@@ -6140,7 +6144,7 @@ server <- function(input, output, session) {
                 ) {
                   existing_settings$unit
                 } else {
-                  "%"
+                  ""
                 },
                 width = "220px"
               ),
