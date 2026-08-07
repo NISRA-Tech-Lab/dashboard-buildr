@@ -4065,6 +4065,12 @@ server <- function(input, output, session) {
   
   page_line_chart_settings <- reactiveValues()
   
+  line_chart_modal_lines <- reactiveVal(
+    list()
+  )
+  
+  active_line_number <- reactiveVal(1L)
+  
   ### Populate the page dropdown ####
   observe({
     req(folder())
@@ -5398,8 +5404,7 @@ server <- function(input, output, session) {
                 year_column = line_settings$year_column,
                 year_mode = year_mode,
                 recent_years = recent_years,
-                filters = line_settings$filters,
-                columns = line_settings$columns
+                lines = line_settings$lines
               )
             }
             
@@ -5475,7 +5480,7 @@ server <- function(input, output, session) {
                   paste0(
                     "Chart ",
                     current_chart,
-                    " title updated."
+                    " updated."
                   ),
                   type = "message"
                 )
@@ -5566,6 +5571,34 @@ server <- function(input, output, session) {
               result
             )
             
+            existing_settings <- page_line_chart_settings[[
+              as.character(current_chart)
+            ]]
+            
+            existing_lines <- if (
+              !is.null(existing_settings) &&
+              !is.null(existing_settings$lines)
+            ) {
+              existing_settings$lines
+            } else {
+              list()
+            }
+            
+            if (length(existing_lines) == 0) {
+              existing_lines <- list(
+                list(
+                  filters = list(),
+                  column = ""
+                )
+              )
+            }
+            
+            line_chart_modal_lines(
+              existing_lines
+            )
+            
+            active_line_number(1L)
+            
             showModal(
               modalDialog(
                 title = paste(
@@ -5581,9 +5614,7 @@ server <- function(input, output, session) {
                   )
                 ),
                 
-                uiOutput(
-                  "line_chart_filters_ui"
-                ),
+                uiOutput("line_chart_line_editor_ui"),
                 
                 footer = tagList(
                   modalButton("Cancel"),
@@ -5668,57 +5699,40 @@ server <- function(input, output, session) {
   observeEvent(
     input$finish_line_chart_configuration,
     {
+      
       chart_number <- active_line_chart()
       chart_data <- line_chart_data()
       
       req(chart_number)
       req(chart_data)
       
-      selected_columns <- input$line_chart_columns
+      lines <- line_chart_modal_lines()
       
-      if (
-        is.null(selected_columns) ||
-        length(selected_columns) == 0
-      ) {
+      current <- active_line_number()
+      
+      lines[[current]] <-
+        capture_current_line_chart_line()
+      
+      invalid_lines <- vapply(
+        lines,
+        function(line) {
+          is.null(line$column) ||
+            !nzchar(line$column)
+        },
+        logical(1)
+      )
+      
+      if (any(invalid_lines)) {
         showNotification(
-          "Select at least one line.",
+          paste0(
+            "Choose a value for line ",
+            which(invalid_lines)[1],
+            "."
+          ),
           type = "error"
         )
         
         return()
-      }
-      
-      calculation_data <- chart_data$calculation_data
-      
-      selected_filters <- list()
-      
-      for (
-        filter_definition in
-        calculation_data$row_filters
-      ) {
-        if (isTRUE(filter_definition$is_year)) {
-          next
-        }
-        
-        input_id <- paste0(
-          "line_chart_",
-          filter_definition$input_id
-        )
-        
-        selected_values <- input[[
-          input_id
-        ]]
-        
-        if (
-          !is.null(selected_values) &&
-          length(selected_values) > 0
-        ) {
-          selected_filters[[
-            filter_definition$column
-          ]] <- as.character(
-            selected_values
-          )
-        }
       }
       
       year_mode <- input[[
@@ -5762,18 +5776,19 @@ server <- function(input, output, session) {
         available_years = chart_data$values,
         year_mode = year_mode,
         recent_years = as.integer(recent_years),
-        filters = selected_filters,
-        columns = as.character(
-          selected_columns
-        )
+        lines = lines
       )
       
-      summary_text <- paste(
-        selected_columns,
-        collapse = ", "
+      summary_text <- paste0(
+        length(lines),
+        if (length(lines) == 1) {
+          " line configured"
+        } else {
+          " lines configured"
+        }
       )
       
-      value_input_id <- paste0(
+      input_id <- paste0(
         "page_chart_",
         chart_number,
         "_lines_summary"
@@ -5782,7 +5797,7 @@ server <- function(input, output, session) {
       shinyjs::runjs(
         sprintf(
           "$('#%s').val(%s);",
-          value_input_id,
+          input_id,
           jsonlite::toJSON(
             summary_text,
             auto_unbox = TRUE
@@ -6073,6 +6088,285 @@ server <- function(input, output, session) {
     }
   )
   
+  ### Render one line at a time ####
+  output$line_chart_line_editor_ui <- renderUI({
+    
+    chart_data <- line_chart_data()
+    req(chart_data)
+    
+    lines <- line_chart_modal_lines()
+    
+    line_number <- active_line_number()
+    
+    req(
+      line_number >= 1,
+      line_number <= length(lines)
+    )
+    
+    current_line <- lines[[
+      line_number
+    ]]
+    
+    calculation_data <- chart_data$calculation_data
+    
+    filter_inputs <- lapply(
+      calculation_data$row_filters,
+      function(filter_definition) {
+        
+        # Time is controlled by Year range outside the modal.
+        if (isTRUE(filter_definition$is_year)) {
+          return(NULL)
+        }
+        
+        current_values <- current_line$filters[[
+          filter_definition$column
+        ]]
+        
+        if (is.null(current_values)) {
+          current_values <- character()
+        }
+        
+        selectizeInput(
+          inputId = paste0(
+            "line_chart_filter_",
+            filter_definition$input_id
+          ),
+          label = filter_definition$label,
+          choices = filter_definition$choices,
+          selected = current_values,
+          multiple = TRUE,
+          options = list(
+            plugins = list(
+              "remove_button"
+            ),
+            placeholder = "No filter"
+          ),
+          width = "100%"
+        )
+      }
+    )
+    
+    tagList(
+      tags$div(
+        style = paste(
+          "display: flex;",
+          "justify-content: space-between;",
+          "align-items: center;",
+          "margin-bottom: 15px;"
+        ),
+        
+        tags$strong(
+          paste(
+            "Line",
+            line_number,
+            "of",
+            length(lines)
+          )
+        ),
+        
+        tags$div(
+          if (line_number > 1) {
+            actionButton(
+              "previous_line_chart_line",
+              "Previous",
+              icon = icon("chevron-left"),
+              class = "btn-default btn-sm"
+            )
+          },
+          
+          if (line_number < length(lines)) {
+            actionButton(
+              "next_line_chart_line",
+              "Next",
+              icon = icon("chevron-right"),
+              class = "btn-default btn-sm"
+            )
+          }
+        )
+      ),
+      
+      filter_inputs,
+      
+      selectInput(
+        inputId = "line_chart_value_column",
+        label = calculation_data$pivot_label,
+        choices = c(
+          "Select a value" = "",
+          calculation_data$pivot_columns
+        ),
+        selected = if (
+          !is.null(current_line$column)
+        ) {
+          current_line$column
+        } else {
+          ""
+        },
+        width = "100%"
+      ),
+      
+      tags$hr(),
+      
+      actionButton(
+        inputId = "add_another_line_chart_line",
+        label = "Add another line",
+        icon = icon("plus"),
+        class = "btn-default"
+      ),
+      
+      if (length(lines) > 1) {
+        actionButton(
+          inputId = "remove_line_chart_line",
+          label = "Remove this line",
+          icon = icon("trash"),
+          class = "btn-danger"
+        )
+      }
+    )
+  })
+  
+  #### Capture the current line ####
+  capture_current_line_chart_line <- function() {
+    
+    chart_data <- line_chart_data()
+    req(chart_data)
+    
+    calculation_data <- chart_data$calculation_data
+    
+    selected_filters <- list()
+    
+    for (
+      filter_definition in
+      calculation_data$row_filters
+    ) {
+      
+      if (isTRUE(filter_definition$is_year)) {
+        next
+      }
+      
+      input_id <- paste0(
+        "line_chart_filter_",
+        filter_definition$input_id
+      )
+      
+      selected_values <- input[[
+        input_id
+      ]]
+      
+      if (
+        !is.null(selected_values) &&
+        length(selected_values) > 0
+      ) {
+        selected_filters[[
+          filter_definition$column
+        ]] <- as.character(
+          selected_values
+        )
+      }
+    }
+    
+    column <- input$line_chart_value_column
+    
+    if (is.null(column)) {
+      column <- ""
+    }
+    
+    list(
+      filters = selected_filters,
+      column = column
+    )
+  }
+  
+  #### Wire previous and next ####
+  observeEvent(
+    input$previous_line_chart_line,
+    {
+      current <- active_line_number()
+      
+      if (current <= 1) {
+        return()
+      }
+      
+      lines <- line_chart_modal_lines()
+      
+      lines[[current]] <-
+        capture_current_line_chart_line()
+      
+      line_chart_modal_lines(lines)
+      active_line_number(current - 1L)
+    },
+    ignoreInit = TRUE
+  )
+  
+  
+  observeEvent(
+    input$next_line_chart_line,
+    {
+      current <- active_line_number()
+      lines <- line_chart_modal_lines()
+      
+      if (current >= length(lines)) {
+        return()
+      }
+      
+      lines[[current]] <-
+        capture_current_line_chart_line()
+      
+      line_chart_modal_lines(lines)
+      active_line_number(current + 1L)
+    },
+    ignoreInit = TRUE
+  )
+  
+  #### Add another line ####
+  observeEvent(
+    input$add_another_line_chart_line,
+    {
+      current <- active_line_number()
+      
+      lines <- line_chart_modal_lines()
+      
+      lines[[current]] <-
+        capture_current_line_chart_line()
+      
+      lines[[length(lines) + 1L]] <- list(
+        filters = list(),
+        column = ""
+      )
+      
+      line_chart_modal_lines(lines)
+      
+      active_line_number(
+        length(lines)
+      )
+    },
+    ignoreInit = TRUE
+  )
+  
+  #### Remove line ####
+  observeEvent(
+    input$remove_line_chart_line,
+    {
+      lines <- line_chart_modal_lines()
+      
+      if (length(lines) <= 1) {
+        return()
+      }
+      
+      current <- active_line_number()
+      
+      lines <- lines[-current]
+      
+      line_chart_modal_lines(lines)
+      
+      active_line_number(
+        min(
+          current,
+          length(lines)
+        )
+      )
+    },
+    ignoreInit = TRUE
+  )
   
 }
 

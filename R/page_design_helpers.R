@@ -4044,9 +4044,9 @@ build_page_line_chart_js <- function(
     year_column,
     year_mode,
     recent_years,
-    filters,
-    columns
+    lines
 ) {
+  
   data_variable <- paste0(
     matrix,
     "_data"
@@ -4058,6 +4058,7 @@ build_page_line_chart_js <- function(
     "_years"
   )
   
+  # Build years dynamically from the live dataset.
   years_lines <- c(
     paste0(
       "    let ",
@@ -4111,49 +4112,76 @@ build_page_line_chart_js <- function(
     )
   }
   
-  all_filters <- filters
-  
-  filter_conditions <- c(
-    paste0(
-      "line_chart_",
-      chart_number,
-      "_years.includes(row[",
-      javascript_string(year_column),
-      "])"
-    )
-  )
-  
-  for (column_name in names(filters)) {
-    filter_conditions <- c(
-      filter_conditions,
-      build_line_chart_filter_condition(
-        column_name = column_name,
-        selected_values = filters[[
-          column_name
-        ]]
-      )
+  if (
+    is.null(lines) ||
+    length(lines) == 0
+  ) {
+    stop(
+      "At least one line must be configured."
     )
   }
   
-  filter_code <- paste0(
-    ".filter(row => ",
-    paste(
-      filter_conditions,
-      collapse = " && "
-    ),
-    ")"
-  )
-  
   series_lines <- vapply(
-    columns,
-    function(column_name) {
+    lines,
+    function(line_definition) {
+      
+      if (
+        is.null(line_definition$column) ||
+        !nzchar(line_definition$column)
+      ) {
+        stop(
+          "Every line must have a value column."
+        )
+      }
+      
+      filter_conditions <- c(
+        paste0(
+          years_variable,
+          ".includes(row[",
+          javascript_string(year_column),
+          "])"
+        )
+      )
+      
+      line_filters <- line_definition$filters
+      
+      if (
+        !is.null(line_filters) &&
+        length(line_filters) > 0
+      ) {
+        
+        for (
+          column_name in
+          names(line_filters)
+        ) {
+          
+          filter_conditions <- c(
+            filter_conditions,
+            build_line_chart_filter_condition(
+              column_name = column_name,
+              selected_values =
+                line_filters[[
+                  column_name
+                ]]
+            )
+          )
+        }
+      }
+      
       paste0(
         "        ",
         data_variable,
-        filter_code,
         "\n",
+        "            .filter(row => ",
+        paste(
+          filter_conditions,
+          collapse = " && "
+        ),
+        ")\n",
         "            .map(col => col[",
-        javascript_string(column_name),
+        javascript_string(
+          line_definition$column
+        ),
         "])"
       )
     },
