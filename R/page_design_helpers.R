@@ -4188,7 +4188,9 @@ build_page_line_chart_js <- function(
     year_column,
     year_mode,
     recent_years,
-    lines
+    lines,
+    unit,
+    show_points
 ) {
   
   data_variable <- paste0(
@@ -4353,6 +4355,60 @@ build_page_line_chart_js <- function(
     "];"
   )
   
+  unit <- as.character(unit)[1]
+  
+  if (is.na(unit)) {
+    unit <- ""
+  }
+  
+  show_points_js <- if (
+    isTRUE(show_points)
+  ) {
+    "true"
+  } else {
+    "false"
+  }
+  
+  chart_call <- c(
+    "",
+    "    lineChart({",
+    paste0(
+      "        years: line_chart_",
+      chart_number,
+      "_years,"
+    ),
+    paste0(
+      "        lines: line_chart_",
+      chart_number,
+      "_lines,"
+    ),
+    paste0(
+      "        labels: line_chart_",
+      chart_number,
+      "_labels,"
+    ),
+    paste0(
+      "        unit: ",
+      javascript_string(unit),
+      ","
+    ),
+    paste0(
+      '        canvas_id: "line-canvas-',
+      chart_number,
+      '",'
+    ),
+    paste0(
+      '        expanded_canvas_id: "line-canvas-',
+      chart_number,
+      '-expanded",'
+    ),
+    paste0(
+      "        showPoints: ",
+      show_points_js
+    ),
+    "    });"
+  )
+  
   lines_block <- c(
     paste0(
       "    const line_chart_",
@@ -4371,7 +4427,8 @@ build_page_line_chart_js <- function(
     "",
     lines_block,
     "",
-    labels_block
+    labels_block,
+    chart_call
   )
 }
 
@@ -4583,4 +4640,163 @@ update_page_line_chart_js <- function(
   )
   
   invisible(paths$js)
+}
+
+update_page_line_chart_html <- function(
+    project_root,
+    page_href,
+    chart_number
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$html)) {
+    stop(
+      paste0(
+        paths$href,
+        " was not found."
+      )
+    )
+  }
+  
+  chart_number <- as.integer(
+    chart_number
+  )
+  
+  if (
+    length(chart_number) != 1 ||
+    is.na(chart_number) ||
+    chart_number < 1 ||
+    chart_number > 3
+  ) {
+    stop(
+      "A valid chart number is required."
+    )
+  }
+  
+  html_lines <- readLines(
+    paths$html,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  chart_region <- find_page_chart_cards_region(
+    html_lines
+  )
+  
+  if (
+    chart_number >
+    length(chart_region$chart_starts)
+  ) {
+    stop(
+      paste0(
+        "Chart ",
+        chart_number,
+        " was not found."
+      )
+    )
+  }
+  
+  chart_start <- chart_region$chart_starts[
+    chart_number
+  ]
+  
+  chart_end <- find_closing_div(
+    html_lines,
+    chart_start
+  )
+  
+  body_starts <- grep(
+    'class=["\'][^"\']*\\bcard-body\\b',
+    html_lines,
+    perl = TRUE
+  )
+  
+  body_starts <- body_starts[
+    body_starts > chart_start &
+      body_starts < chart_end
+  ]
+  
+  if (length(body_starts) != 1) {
+    stop(
+      paste0(
+        "Could not uniquely identify the card body for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  body_start <- body_starts[[1]]
+  
+  body_end <- find_closing_div(
+    html_lines,
+    body_start
+  )
+  
+  opening_line <- html_lines[
+    body_start
+  ]
+  
+  indent <- sub(
+    "^(\\s*).*",
+    "\\1",
+    opening_line
+  )
+  
+  content_indent <- paste0(
+    indent,
+    "    "
+  )
+  
+  replacement <- c(
+    opening_line,
+    paste0(
+      content_indent,
+      '<canvas id="line-canvas-',
+      chart_number,
+      '" class="chart-canvas"></canvas>'
+    ),
+    html_lines[
+      body_end
+    ]
+  )
+  
+  updated_html <- c(
+    if (body_start > 1) {
+      html_lines[
+        seq_len(
+          body_start - 1
+        )
+      ]
+    } else {
+      character()
+    },
+    
+    replacement,
+    
+    if (body_end < length(html_lines)) {
+      html_lines[
+        seq.int(
+          body_end + 1,
+          length(html_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_html,
+    paths$html,
+    useBytes = TRUE
+  )
+  
+  invisible(
+    paths$html
+  )
 }

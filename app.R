@@ -5381,6 +5381,30 @@ server <- function(input, output, session) {
                 )
               ]]
               
+              unit <- input[[
+                paste0(
+                  "page_chart_",
+                  current_chart,
+                  "_unit"
+                )
+              ]]
+              
+              if (is.null(unit)) {
+                unit <- "%"
+              }
+              
+              show_points <- input[[
+                paste0(
+                  "page_chart_",
+                  current_chart,
+                  "_show_points"
+                )
+              ]]
+              
+              if (is.null(show_points)) {
+                show_points <- TRUE
+              }
+              
               
               
               line_chart_js <- build_page_line_chart_js(
@@ -5389,8 +5413,19 @@ server <- function(input, output, session) {
                 year_column = line_settings$year_column,
                 year_mode = year_mode,
                 recent_years = recent_years,
-                lines = line_settings$lines
+                lines = line_settings$lines,
+                unit = unit,
+                show_points = show_points
               )
+              
+              line_settings$year_mode <- year_mode
+              line_settings$recent_years <- as.integer(recent_years)
+              line_settings$unit <- unit
+              line_settings$show_points <- show_points
+              
+              page_line_chart_settings[[
+                as.character(current_chart)
+              ]] <- line_settings
             }
             
             matrix <- input[[
@@ -5428,7 +5463,15 @@ server <- function(input, output, session) {
                   matrix = matrix
                 )
                 
+                
+                  
                 if (chart_type == "line") {
+                  
+                  update_page_line_chart_html(
+                    project_root = folder(),
+                    page_href = selected_page_design(),
+                    chart_number = current_chart
+                  )
                   
                   update_page_line_chart_js(
                     project_root = folder(),
@@ -5437,6 +5480,7 @@ server <- function(input, output, session) {
                     line_chart_js = line_chart_js
                   )
                 }
+                
                 
                 refreshed_titles <- read_page_chart_titles(
                   project_root = folder(),
@@ -6082,6 +6126,40 @@ server <- function(input, output, session) {
                     class = "btn-default"
                   )
                 )
+              ),
+              textInput(
+                inputId = paste0(
+                  "page_chart_",
+                  current_chart,
+                  "_unit"
+                ),
+                label = "Unit",
+                value = if (
+                  !is.null(existing_settings) &&
+                  !is.null(existing_settings$unit)
+                ) {
+                  existing_settings$unit
+                } else {
+                  "%"
+                },
+                width = "220px"
+              ),
+              
+              checkboxInput(
+                inputId = paste0(
+                  "page_chart_",
+                  current_chart,
+                  "_show_points"
+                ),
+                label = "Show points",
+                value = if (
+                  !is.null(existing_settings) &&
+                  !is.null(existing_settings$show_points)
+                ) {
+                  isTRUE(existing_settings$show_points)
+                } else {
+                  TRUE
+                }
               )
             )
           )
