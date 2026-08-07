@@ -4824,74 +4824,18 @@ update_page_line_chart_js <- function(
     chart_marker:section_end
   ]
   
-  config_start_pattern <-
-    "^\\s*//\\s*BuildR line chart config start\\s*$"
-  
-  config_end_pattern <-
-    "^\\s*//\\s*BuildR line chart config end\\s*$"
-  
-  old_config_start <- grep(
-    config_start_pattern,
+  section <- remove_page_chart_config_blocks(
     section
   )
   
-  old_config_end <- grep(
-    config_end_pattern,
-    section
-  )
-  
-  # Remove the previous generated line-chart block.
-  if (
-    length(old_config_start) == 1 &&
-    length(old_config_end) == 1 &&
-    old_config_end > old_config_start
-  ) {
-    
-    section <- section[
-      -seq.int(
-        old_config_start,
-        old_config_end
-      )
-    ]
-    
-  } else if (
-    length(old_config_start) > 0 ||
-    length(old_config_end) > 0
-  ) {
-    
-    stop(
-      paste0(
-        "Could not safely identify the existing line-chart ",
-        "configuration for chart ",
-        chart_number,
-        "."
-      )
-    )
-  }
-  
-  # Remove trailing blank lines before appending the new block.
-  while (
-    length(section) > 0 &&
-    !nzchar(trimws(tail(section, 1)))
-  ) {
-    section <- head(
-      section,
-      -1
-    )
-  }
-  
-  generated_block <- c(
+  replacement_section <- c(
+    section,
     "",
     "    // BuildR line chart config start",
     line_chart_js,
     "    // BuildR line chart config end",
     "",
     ""
-  )
-  
-  replacement_section <- c(
-    section,
-    generated_block
   )
   
   updated_js <- c(
@@ -4924,198 +4868,6 @@ update_page_line_chart_js <- function(
   )
   
   invisible(paths$js)
-}
-
-update_page_line_chart_html <- function(
-    project_root,
-    page_href,
-    chart_number
-) {
-  
-  paths <- page_design_paths(
-    project_root,
-    page_href
-  )
-  
-  if (!file.exists(paths$html)) {
-    stop(
-      paste0(
-        paths$href,
-        " was not found."
-      )
-    )
-  }
-  
-  chart_number <- as.integer(
-    chart_number
-  )
-  
-  if (
-    length(chart_number) != 1 ||
-    is.na(chart_number) ||
-    chart_number < 1 ||
-    chart_number > 3
-  ) {
-    stop(
-      "A valid chart number is required."
-    )
-  }
-  
-  html_lines <- readLines(
-    paths$html,
-    warn = FALSE,
-    encoding = "UTF-8"
-  )
-  
-  chart_region <- find_page_chart_cards_region(
-    html_lines
-  )
-  
-  if (
-    chart_number >
-    length(chart_region$chart_starts)
-  ) {
-    stop(
-      paste0(
-        "Chart ",
-        chart_number,
-        " was not found."
-      )
-    )
-  }
-  
-  chart_start <- chart_region$chart_starts[
-    chart_number
-  ]
-  
-  chart_end <- find_closing_div(
-    html_lines,
-    chart_start
-  )
-  
-  body_starts <- grep(
-    'class=["\'][^"\']*\\bcard-body\\b',
-    html_lines,
-    perl = TRUE
-  )
-  
-  body_starts <- body_starts[
-    body_starts > chart_start &
-      body_starts < chart_end
-  ]
-  
-  if (length(body_starts) == 0) {
-    stop(
-      paste0(
-        "Could not identify the card body for chart ",
-        chart_number,
-        "."
-      )
-    )
-  }
-  
-  #
-  # There should normally be exactly one card body.
-  #
-  # Older BuildR output may contain duplicate card bodies from
-  # the previous line-chart HTML writer. If so, treat all of
-  # those bodies as one replaceable region and repair the HTML.
-  #
-  
-  body_ends <- vapply(
-    body_starts,
-    function(body_start) {
-      find_closing_div(
-        html_lines,
-        body_start
-      )
-    },
-    integer(1)
-  )
-  
-  replacement_start <- min(
-    body_starts
-  )
-  
-  replacement_end <- max(
-    body_ends
-  )
-  
-  first_body_line <- html_lines[
-    replacement_start
-  ]
-  
-  indent <- sub(
-    "^(\\s*).*",
-    "\\1",
-    first_body_line
-  )
-  
-  content_indent <- paste0(
-    indent,
-    "    "
-  )
-  
-  #
-  # Preserve the class list from the first card-body while
-  # discarding any existing inner HTML.
-  #
-  
-  opening_tag <- sub(
-    "^(\\s*<div\\b[^>]*>).*",
-    "\\1",
-    first_body_line,
-    perl = TRUE
-  )
-  
-  replacement <- c(
-    opening_tag,
-    paste0(
-      content_indent,
-      '<canvas id="line-canvas-',
-      chart_number,
-      '" class="chart-canvas"></canvas>'
-    ),
-    paste0(
-      indent,
-      "</div>"
-    )
-  )
-  
-  updated_html <- c(
-    if (replacement_start > 1) {
-      html_lines[
-        seq_len(
-          replacement_start - 1
-        )
-      ]
-    } else {
-      character()
-    },
-    
-    replacement,
-    
-    if (replacement_end < length(html_lines)) {
-      html_lines[
-        seq.int(
-          replacement_end + 1,
-          length(html_lines)
-        )
-      ]
-    } else {
-      character()
-    }
-  )
-  
-  writeLines(
-    updated_html,
-    paths$html,
-    useBytes = TRUE
-  )
-  
-  invisible(
-    paths$html
-  )
 }
 
 normalise_page_chart_capture_ids <- function(
@@ -5672,131 +5424,6 @@ build_page_bar_chart_js <- function(
   )
 }
 
-update_page_bar_chart_html <- function(
-    project_root,
-    page_href,
-    chart_number
-) {
-  paths <- page_design_paths(
-    project_root,
-    page_href
-  )
-  
-  html_lines <- readLines(
-    paths$html,
-    warn = FALSE,
-    encoding = "UTF-8"
-  )
-  
-  chart_region <- find_page_chart_cards_region(
-    html_lines
-  )
-  
-  chart_start <- chart_region$chart_starts[
-    chart_number
-  ]
-  
-  chart_end <- find_closing_div(
-    html_lines,
-    chart_start
-  )
-  
-  body_starts <- grep(
-    'class=["\'][^"\']*\\bcard-body\\b',
-    html_lines,
-    perl = TRUE
-  )
-  
-  body_starts <- body_starts[
-    body_starts > chart_start &
-      body_starts < chart_end
-  ]
-  
-  if (length(body_starts) == 0) {
-    stop(
-      paste0(
-        "Could not identify the card body for chart ",
-        chart_number,
-        "."
-      )
-    )
-  }
-  
-  body_start <- body_starts[[1]]
-  
-  body_end <- find_closing_div(
-    html_lines,
-    body_start
-  )
-  
-  indent <- sub(
-    "^(\\s*).*",
-    "\\1",
-    html_lines[
-      body_start
-    ]
-  )
-  
-  opening_tag <- sub(
-    "^(\\s*<div\\b[^>]*>).*",
-    "\\1",
-    html_lines[
-      body_start
-    ],
-    perl = TRUE
-  )
-  
-  replacement <- c(
-    opening_tag,
-    paste0(
-      indent,
-      "    ",
-      '<canvas id="bar-canvas-',
-      chart_number,
-      '" class="chart-canvas"></canvas>'
-    ),
-    paste0(
-      indent,
-      "</div>"
-    )
-  )
-  
-  updated_html <- c(
-    if (body_start > 1) {
-      html_lines[
-        seq_len(
-          body_start - 1
-        )
-      ]
-    } else {
-      character()
-    },
-    
-    replacement,
-    
-    if (body_end < length(html_lines)) {
-      html_lines[
-        seq.int(
-          body_end + 1,
-          length(html_lines)
-        )
-      ]
-    } else {
-      character()
-    }
-  )
-  
-  writeLines(
-    updated_html,
-    paths$html,
-    useBytes = TRUE
-  )
-  
-  invisible(
-    paths$html
-  )
-}
-
 update_page_bar_chart_js <- function(
     project_root,
     page_href,
@@ -5864,47 +5491,9 @@ update_page_bar_chart_js <- function(
     chart_marker:section_end
   ]
   
-  start_pattern <-
-    "^\\s*//\\s*BuildR bar chart config start\\s*$"
-  
-  end_pattern <-
-    "^\\s*//\\s*BuildR bar chart config end\\s*$"
-  
-  old_start <- grep(
-    start_pattern,
+  section <- remove_page_chart_config_blocks(
     section
   )
-  
-  old_end <- grep(
-    end_pattern,
-    section
-  )
-  
-  if (
-    length(old_start) == 1 &&
-    length(old_end) == 1
-  ) {
-    section <- section[
-      -seq.int(
-        old_start,
-        old_end
-      )
-    ]
-  }
-  
-  while (
-    length(section) > 0 &&
-    !nzchar(
-      trimws(
-        tail(section, 1)
-      )
-    )
-  ) {
-    section <- head(
-      section,
-      -1
-    )
-  }
   
   replacement_section <- c(
     section,
@@ -6268,169 +5857,6 @@ build_page_pie_chart_js <- function(
   )
 }
 
-update_page_pie_chart_html <- function(
-    project_root,
-    page_href,
-    chart_number
-) {
-  
-  paths <- page_design_paths(
-    project_root,
-    page_href
-  )
-  
-  if (!file.exists(paths$html)) {
-    stop(
-      paste0(
-        paths$href,
-        " was not found."
-      )
-    )
-  }
-  
-  chart_number <- as.integer(
-    chart_number
-  )
-  
-  if (
-    length(chart_number) != 1 ||
-    is.na(chart_number) ||
-    chart_number < 1 ||
-    chart_number > 3
-  ) {
-    stop(
-      "A valid chart number is required."
-    )
-  }
-  
-  html_lines <- readLines(
-    paths$html,
-    warn = FALSE,
-    encoding = "UTF-8"
-  )
-  
-  chart_region <- find_page_chart_cards_region(
-    html_lines
-  )
-  
-  if (
-    chart_number >
-    length(chart_region$chart_starts)
-  ) {
-    stop(
-      paste0(
-        "Chart ",
-        chart_number,
-        " was not found."
-      )
-    )
-  }
-  
-  chart_start <- chart_region$chart_starts[
-    chart_number
-  ]
-  
-  chart_end <- find_closing_div(
-    html_lines,
-    chart_start
-  )
-  
-  body_starts <- grep(
-    'class=["\'][^"\']*\\bcard-body\\b',
-    html_lines,
-    perl = TRUE
-  )
-  
-  body_starts <- body_starts[
-    body_starts > chart_start &
-      body_starts < chart_end
-  ]
-  
-  if (length(body_starts) == 0) {
-    stop(
-      paste0(
-        "Could not identify the card body for chart ",
-        chart_number,
-        "."
-      )
-    )
-  }
-  
-  body_start <- body_starts[[1]]
-  
-  body_end <- find_closing_div(
-    html_lines,
-    body_start
-  )
-  
-  indent <- sub(
-    "^(\\s*).*",
-    "\\1",
-    html_lines[
-      body_start
-    ]
-  )
-  
-  opening_tag <- sub(
-    "^(\\s*<div\\b[^>]*>).*",
-    "\\1",
-    html_lines[
-      body_start
-    ],
-    perl = TRUE
-  )
-  
-  replacement <- c(
-    opening_tag,
-    paste0(
-      indent,
-      "    ",
-      '<canvas id="pie-canvas-',
-      chart_number,
-      '" class="chart-canvas"></canvas>'
-    ),
-    paste0(
-      indent,
-      "</div>"
-    )
-  )
-  
-  updated_html <- c(
-    if (body_start > 1) {
-      html_lines[
-        seq_len(
-          body_start - 1
-        )
-      ]
-    } else {
-      character()
-    },
-    
-    replacement,
-    
-    if (body_end < length(html_lines)) {
-      html_lines[
-        seq.int(
-          body_end + 1,
-          length(html_lines)
-        )
-      ]
-    } else {
-      character()
-    }
-  )
-  
-  writeLines(
-    updated_html,
-    paths$html,
-    useBytes = TRUE
-  )
-  
-  invisible(
-    paths$html
-  )
-}
-
 update_page_pie_chart_js <- function(
     project_root,
     page_href,
@@ -6528,66 +5954,9 @@ update_page_pie_chart_js <- function(
     chart_marker:section_end
   ]
   
-  start_pattern <-
-    "^\\s*//\\s*BuildR pie chart config start\\s*$"
-  
-  end_pattern <-
-    "^\\s*//\\s*BuildR pie chart config end\\s*$"
-  
-  old_start <- grep(
-    start_pattern,
+  section <- remove_page_chart_config_blocks(
     section
   )
-  
-  old_end <- grep(
-    end_pattern,
-    section
-  )
-  
-  if (
-    length(old_start) == 1 &&
-    length(old_end) == 1 &&
-    old_end > old_start
-  ) {
-    
-    section <- section[
-      -seq.int(
-        old_start,
-        old_end
-      )
-    ]
-    
-  } else if (
-    length(old_start) > 0 ||
-    length(old_end) > 0
-  ) {
-    
-    stop(
-      paste0(
-        "Could not safely identify the existing pie-chart ",
-        "configuration for chart ",
-        chart_number,
-        "."
-      )
-    )
-  }
-  
-  while (
-    length(section) > 0 &&
-    !nzchar(
-      trimws(
-        tail(
-          section,
-          1
-        )
-      )
-    )
-  ) {
-    section <- head(
-      section,
-      -1
-    )
-  }
   
   replacement_section <- c(
     section,
@@ -6633,4 +6002,294 @@ update_page_pie_chart_js <- function(
   invisible(
     paths$js
   )
+}
+
+update_page_chart_canvas_html <- function(
+    project_root,
+    page_href,
+    chart_number,
+    canvas_prefix
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$html)) {
+    stop(
+      paste0(
+        paths$href,
+        " was not found."
+      )
+    )
+  }
+  
+  chart_number <- as.integer(
+    chart_number
+  )
+  
+  if (
+    length(chart_number) != 1 ||
+    is.na(chart_number) ||
+    chart_number < 1 ||
+    chart_number > 3
+  ) {
+    stop(
+      "A valid chart number is required."
+    )
+  }
+  
+  canvas_prefix <- as.character(
+    canvas_prefix
+  )[1]
+  
+  if (
+    is.na(canvas_prefix) ||
+    !nzchar(canvas_prefix)
+  ) {
+    stop(
+      "A canvas prefix is required."
+    )
+  }
+  
+  html_lines <- readLines(
+    paths$html,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  chart_region <- find_page_chart_cards_region(
+    html_lines
+  )
+  
+  if (
+    chart_number >
+    length(chart_region$chart_starts)
+  ) {
+    stop(
+      paste0(
+        "Chart ",
+        chart_number,
+        " was not found."
+      )
+    )
+  }
+  
+  chart_start <- chart_region$chart_starts[
+    chart_number
+  ]
+  
+  chart_end <- find_closing_div(
+    html_lines,
+    chart_start
+  )
+  
+  body_starts <- grep(
+    'class=["\'][^"\']*\\bcard-body\\b',
+    html_lines,
+    perl = TRUE
+  )
+  
+  body_starts <- body_starts[
+    body_starts > chart_start &
+      body_starts < chart_end
+  ]
+  
+  if (length(body_starts) == 0) {
+    stop(
+      paste0(
+        "Could not identify the card body for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  body_start <- body_starts[[1]]
+  
+  body_end <- find_closing_div(
+    html_lines,
+    body_start
+  )
+  
+  indent <- sub(
+    "^(\\s*).*",
+    "\\1",
+    html_lines[
+      body_start
+    ]
+  )
+  
+  opening_tag <- sub(
+    "^(\\s*<div\\b[^>]*>).*",
+    "\\1",
+    html_lines[
+      body_start
+    ],
+    perl = TRUE
+  )
+  
+  canvas_id <- paste0(
+    canvas_prefix,
+    "-canvas-",
+    chart_number
+  )
+  
+  replacement <- c(
+    opening_tag,
+    paste0(
+      indent,
+      "    ",
+      '<canvas id="',
+      canvas_id,
+      '" class="chart-canvas"></canvas>'
+    ),
+    paste0(
+      indent,
+      "</div>"
+    )
+  )
+  
+  updated_html <- c(
+    if (body_start > 1) {
+      html_lines[
+        seq_len(
+          body_start - 1
+        )
+      ]
+    } else {
+      character()
+    },
+    
+    replacement,
+    
+    if (body_end < length(html_lines)) {
+      html_lines[
+        seq.int(
+          body_end + 1,
+          length(html_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_html,
+    paths$html,
+    useBytes = TRUE
+  )
+  
+  invisible(
+    paths$html
+  )
+}
+
+remove_page_chart_config_blocks <- function(
+    section
+) {
+  
+  chart_types <- c(
+    "line",
+    "bar",
+    "pie",
+    "table",
+    "map",
+    "pyramid",
+    "treemap"
+  )
+  
+  for (chart_type in chart_types) {
+    
+    start_pattern <- paste0(
+      "^\\s*//\\s*BuildR ",
+      chart_type,
+      " chart config start\\s*$"
+    )
+    
+    end_pattern <- paste0(
+      "^\\s*//\\s*BuildR ",
+      chart_type,
+      " chart config end\\s*$"
+    )
+    
+    repeat {
+      
+      config_start <- grep(
+        start_pattern,
+        section
+      )
+      
+      config_end <- grep(
+        end_pattern,
+        section
+      )
+      
+      if (
+        length(config_start) == 0 &&
+        length(config_end) == 0
+      ) {
+        break
+      }
+      
+      if (
+        length(config_start) == 0 ||
+        length(config_end) == 0
+      ) {
+        stop(
+          paste0(
+            "Could not safely identify an existing ",
+            chart_type,
+            " chart configuration."
+          )
+        )
+      }
+      
+      current_start <- config_start[[1]]
+      
+      later_ends <- config_end[
+        config_end > current_start
+      ]
+      
+      if (length(later_ends) == 0) {
+        stop(
+          paste0(
+            "Could not safely identify the end of an existing ",
+            chart_type,
+            " chart configuration."
+          )
+        )
+      }
+      
+      current_end <- later_ends[[1]]
+      
+      section <- section[
+        -seq.int(
+          current_start,
+          current_end
+        )
+      ]
+    }
+  }
+  
+  while (
+    length(section) > 0 &&
+    !nzchar(
+      trimws(
+        tail(
+          section,
+          1
+        )
+      )
+    )
+  ) {
+    section <- head(
+      section,
+      -1
+    )
+  }
+  
+  section
 }

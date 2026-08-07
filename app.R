@@ -5618,10 +5618,11 @@ server <- function(input, output, session) {
                   
                 if (chart_type == "line") {
                   
-                  update_page_line_chart_html(
+                  update_page_chart_canvas_html(
                     project_root = folder(),
                     page_href = selected_page_design(),
-                    chart_number = current_chart
+                    chart_number = current_chart,
+                    canvas_prefix = "line"
                   )
                   
                   update_page_line_chart_js(
@@ -5634,10 +5635,11 @@ server <- function(input, output, session) {
                 
                 if (chart_type == "bar") {
                   
-                  update_page_bar_chart_html(
+                  update_page_chart_canvas_html(
                     project_root = folder(),
                     page_href = selected_page_design(),
-                    chart_number = current_chart
+                    chart_number = current_chart,
+                    canvas_prefix = "bar"
                   )
                   
                   update_page_bar_chart_js(
@@ -5650,12 +5652,11 @@ server <- function(input, output, session) {
                 
                 if (chart_type == "pie") {
                   
-                  update_page_pie_chart_html(
+                  update_page_chart_canvas_html(
                     project_root = folder(),
-                    page_href =
-                      selected_page_design(),
-                    chart_number =
-                      current_chart
+                    page_href = selected_page_design(),
+                    chart_number = current_chart,
+                    canvas_prefix = "pie"
                   )
                   
                   update_page_pie_chart_js(
