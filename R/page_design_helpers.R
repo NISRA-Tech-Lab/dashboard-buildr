@@ -1717,7 +1717,8 @@ update_page_card_value_js <- function(
 
 clear_page_js_chart_content <- function(
     js_lines,
-    js_filename
+    js_filename,
+    chart_count
 ) {
   
   chart_start <- grep(
@@ -1758,11 +1759,64 @@ clear_page_js_chart_content <- function(
     )
   }
   
+  chart_count <- as.integer(chart_count)
+  
+  if (
+    length(chart_count) != 1 ||
+    is.na(chart_count) ||
+    chart_count < 0 ||
+    chart_count > 3
+  ) {
+    stop(
+      "The number of charts must be between 0 and 3."
+    )
+  }
+  
+  empty_chart_sections <- character()
+  
+  if (chart_count > 0) {
+    
+    for (chart_number in seq_len(chart_count)) {
+      
+      empty_chart_sections <- c(
+        empty_chart_sections,
+        paste0(
+          "    // Content for chart ",
+          chart_number
+        ),
+        "",
+        ""
+      )
+    }
+    
+    # Keep formatting tidy before the end marker.
+    while (
+      length(empty_chart_sections) > 0 &&
+      identical(
+        tail(
+          empty_chart_sections,
+          1
+        ),
+        ""
+      )
+    ) {
+      empty_chart_sections <- head(
+        empty_chart_sections,
+        -1
+      )
+    }
+  }
+  
   c(
-    js_lines[seq_len(chart_start)],
+    js_lines[
+      seq_len(chart_start)
+    ],
     "",
+    empty_chart_sections,
     "",
-    js_lines[chart_end:length(js_lines)]
+    js_lines[
+      chart_end:length(js_lines)
+    ]
   )
 }
 
@@ -2282,6 +2336,12 @@ clear_page_design_files <- function(
   
   updated_html <- original_html
   
+  chart_count <- length(
+    find_page_chart_cards_region(
+      original_html
+    )$chart_starts
+  )
+  
   # Clear the page strapline.
   current_page <- grep(
     'class=["\'][^"\']*\\bcurrent-page\\b',
@@ -2445,7 +2505,8 @@ clear_page_design_files <- function(
       
       updated_js <- clear_page_js_chart_content(
         js_lines = updated_js,
-        js_filename = paths$js_filename
+        js_filename = paths$js_filename,
+        chart_count = chart_count
       )
       
       updated_js <- updated_js[
@@ -3771,4 +3832,313 @@ update_page_chart_matrix <- function(
   )
   
   invisible(paths$js)
+}
+
+find_line_chart_year_definition <- function(
+    project_root,
+    matrix
+) {
+  calculation_data <- read_card_calculation_data(
+    project_root = project_root,
+    matrix = matrix
+  )
+  
+  year_filters <- Filter(
+    function(filter_definition) {
+      isTRUE(filter_definition$is_year)
+    },
+    calculation_data$row_filters
+  )
+  
+  if (length(year_filters) == 1) {
+    year_column <- year_filters[[1]]$column
+  } else {
+    metadata_path <- file.path(
+      project_root,
+      "public",
+      "data",
+      "data.json"
+    )
+    
+    metadata_text <- paste(
+      readLines(
+        metadata_path,
+        warn = FALSE,
+        encoding = "UTF-8"
+      ),
+      collapse = "\n"
+    )
+    
+    metadata <- jsonlite::fromJSON(
+      metadata_text,
+      simplifyVector = FALSE
+    )
+    
+    variables <- metadata[[matrix]]$variables
+    
+    year_variables <- Filter(
+      function(variable) {
+        grepl(
+          "^TLIST\\((A1|Q1|M1|W1)\\)$",
+          as.character(variable$code)[1]
+        )
+      },
+      variables
+    )
+    
+    if (length(year_variables) != 1) {
+      stop(
+        paste0(
+          "Could not uniquely identify the time variable for ",
+          matrix,
+          "."
+        )
+      )
+    }
+    
+    year_column <- as.character(
+      year_variables[[1]]$name
+    )[1]
+  }
+  
+  if (!year_column %in% names(calculation_data$data)) {
+    stop(
+      paste0(
+        "The time column '",
+        year_column,
+        "' was not found in ",
+        matrix,
+        ".csv."
+      )
+    )
+  }
+  
+  year_values <- unique(
+    as.character(
+      calculation_data$data[[year_column]]
+    )
+  )
+  
+  year_values <- year_values[
+    !is.na(year_values) &
+      nzchar(trimws(year_values))
+  ]
+  
+  numeric_values <- suppressWarnings(
+    as.numeric(year_values)
+  )
+  
+  if (all(!is.na(numeric_values))) {
+    year_values <- year_values[
+      order(numeric_values)
+    ]
+  } else {
+    year_values <- sort(year_values)
+  }
+  
+  list(
+    column = year_column,
+    values = year_values,
+    calculation_data = calculation_data
+  )
+}
+
+select_line_chart_years <- function(
+    available_years,
+    mode = "all",
+    recent_years = 5L
+) {
+  available_years <- as.character(
+    available_years
+  )
+  
+  if (identical(mode, "all")) {
+    return(available_years)
+  }
+  
+  recent_years <- as.integer(
+    recent_years
+  )
+  
+  if (
+    length(recent_years) != 1 ||
+    is.na(recent_years) ||
+    recent_years < 1
+  ) {
+    stop(
+      "The number of recent years must be at least 1."
+    )
+  }
+  
+  number_to_keep <- min(
+    recent_years,
+    length(available_years)
+  )
+  
+  tail(
+    available_years,
+    number_to_keep
+  )
+}
+
+javascript_array_value <- function(value) {
+  value <- as.character(value)[1]
+  
+  numeric_value <- suppressWarnings(
+    as.numeric(value)
+  )
+  
+  if (
+    !is.na(numeric_value) &&
+    grepl(
+      "^-?[0-9]+(?:\\.[0-9]+)?$",
+      value
+    )
+  ) {
+    return(value)
+  }
+  
+  javascript_string(value)
+}
+
+build_line_chart_filter_condition <- function(
+    column_name,
+    selected_values
+) {
+  selected_values <- as.character(
+    selected_values
+  )
+  
+  js_values <- vapply(
+    selected_values,
+    javascript_string,
+    character(1)
+  )
+  
+  if (length(js_values) == 1) {
+    return(
+      paste0(
+        "row[",
+        javascript_string(column_name),
+        "] == ",
+        js_values
+      )
+    )
+  }
+  
+  paste0(
+    "[",
+    paste(
+      js_values,
+      collapse = ", "
+    ),
+    "].includes(row[",
+    javascript_string(column_name),
+    "])"
+  )
+}
+
+build_page_line_chart_js <- function(
+    chart_number,
+    matrix,
+    year_column,
+    years,
+    filters,
+    columns
+) {
+  data_variable <- paste0(
+    matrix,
+    "_data"
+  )
+  
+  years_js <- paste(
+    vapply(
+      years,
+      javascript_array_value,
+      character(1)
+    ),
+    collapse = ", "
+  )
+  
+  years_lines <- paste0(
+    "    const line_chart_",
+    chart_number,
+    "_years = [",
+    years_js,
+    "];"
+  )
+  
+  all_filters <- c(
+    list(
+      stats::setNames(
+        list(years),
+        year_column
+      )
+    )[[1]],
+    filters
+  )
+  
+  filter_conditions <- character()
+  
+  for (column_name in names(all_filters)) {
+    filter_conditions <- c(
+      filter_conditions,
+      build_line_chart_filter_condition(
+        column_name = column_name,
+        selected_values = all_filters[[
+          column_name
+        ]]
+      )
+    )
+  }
+  
+  filter_code <- if (
+    length(filter_conditions) > 0
+  ) {
+    paste0(
+      ".filter(row => ",
+      paste(
+        filter_conditions,
+        collapse = " && "
+      ),
+      ")"
+    )
+  } else {
+    ""
+  }
+  
+  series_lines <- vapply(
+    columns,
+    function(column_name) {
+      paste0(
+        "        ",
+        data_variable,
+        filter_code,
+        "\n",
+        "            .map(col => col[",
+        javascript_string(column_name),
+        "])"
+      )
+    },
+    character(1)
+  )
+  
+  lines_block <- c(
+    paste0(
+      "    const line_chart_",
+      chart_number,
+      "_lines = ["
+    ),
+    paste0(
+      series_lines,
+      collapse = ",\n\n"
+    ),
+    "    ];"
+  )
+  
+  c(
+    years_lines,
+    "",
+    lines_block
+  )
 }

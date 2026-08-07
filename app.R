@@ -4059,6 +4059,12 @@ server <- function(input, output, session) {
   
   page_card_calculations <- reactiveValues()
   
+  active_line_chart <- reactiveVal(NULL)
+  
+  line_chart_data <- reactiveVal(NULL)
+  
+  page_line_chart_settings <- reactiveValues()
+  
   ### Populate the page dropdown ####
   observe({
     req(folder())
@@ -5257,6 +5263,17 @@ server <- function(input, output, session) {
                 ),
                 
                 tags$div(
+                  style = "margin-top: 15px;",
+                  uiOutput(
+                    paste0(
+                      "page_chart_",
+                      chart_number,
+                      "_type_options"
+                    )
+                  )
+                ),
+                
+                tags$div(
                   class = "well well-sm",
                   
                   tags$strong("Chart preview"),
@@ -5337,6 +5354,56 @@ server <- function(input, output, session) {
             
             if (is.null(chart_type)) {
               chart_type <- ""
+            }
+            
+            if (chart_type == "line") {
+              line_settings <- page_line_chart_settings[[
+                as.character(current_chart)
+              ]]
+              
+              if (is.null(line_settings)) {
+                showNotification(
+                  paste0(
+                    "Configure the lines for chart ",
+                    current_chart,
+                    " before saving."
+                  ),
+                  type = "error"
+                )
+                
+                return()
+              }
+              
+              year_mode <- input[[
+                paste0(
+                  "page_chart_",
+                  current_chart,
+                  "_year_mode"
+                )
+              ]]
+              
+              recent_years <- input[[
+                paste0(
+                  "page_chart_",
+                  current_chart,
+                  "_recent_years"
+                )
+              ]]
+              
+              selected_years <- select_line_chart_years(
+                available_years = line_settings$available_years,
+                mode = year_mode,
+                recent_years = recent_years
+              )
+              
+              line_chart_js <- build_page_line_chart_js(
+                chart_number = current_chart,
+                matrix = line_settings$matrix,
+                year_column = line_settings$year_column,
+                years = selected_years,
+                filters = line_settings$filters,
+                columns = line_settings$columns
+              )
             }
             
             matrix <- input[[
@@ -5421,6 +5488,302 @@ server <- function(input, output, session) {
           ignoreInit = TRUE
         )
       })
+    }
+  )
+  
+  ### Connect the configure lines buttons ####
+  lapply(
+    seq_len(3),
+    function(chart_number) {
+      local({
+        current_chart <- chart_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "configure_page_chart_lines_",
+              current_chart
+            )
+          ]],
+          {
+            req(folder())
+            req(selected_page_design())
+            
+            matrix <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_matrix"
+              )
+            ]]
+            
+            req(matrix)
+            req(nzchar(matrix))
+            
+            chart_type <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_type"
+              )
+            ]]
+            
+            req(identical(chart_type, "line"))
+            
+            result <- tryCatch(
+              find_line_chart_year_definition(
+                project_root = folder(),
+                matrix = matrix
+              ),
+              error = function(error) {
+                showNotification(
+                  paste(
+                    "The line chart data could not be loaded:",
+                    conditionMessage(error)
+                  ),
+                  type = "error",
+                  duration = NULL
+                )
+                
+                NULL
+              }
+            )
+            
+            req(result)
+            
+            active_line_chart(
+              current_chart
+            )
+            
+            line_chart_data(
+              result
+            )
+            
+            showModal(
+              modalDialog(
+                title = paste(
+                  "Configure lines for chart",
+                  current_chart
+                ),
+                
+                tags$p(
+                  paste(
+                    "Choose the value columns to display as lines.",
+                    "Use the filters to restrict the rows included",
+                    "in every selected line."
+                  )
+                ),
+                
+                uiOutput(
+                  "line_chart_filters_ui"
+                ),
+                
+                footer = tagList(
+                  modalButton("Cancel"),
+                  
+                  actionButton(
+                    inputId = "finish_line_chart_configuration",
+                    label = "Done",
+                    class = "btn-primary"
+                  )
+                ),
+                
+                size = "l",
+                easyClose = FALSE
+              )
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
+  
+  ### Render the line selection modal ####
+  output$line_chart_filters_ui <- renderUI({
+    chart_data <- line_chart_data()
+    
+    req(chart_data)
+    
+    calculation_data <- chart_data$calculation_data
+    
+    filter_inputs <- lapply(
+      calculation_data$row_filters,
+      function(filter_definition) {
+        
+        # Year range is handled separately in the accordion,
+        # so do not duplicate the time filter here.
+        if (isTRUE(filter_definition$is_year)) {
+          return(NULL)
+        }
+        
+        selectizeInput(
+          inputId = paste0(
+            "line_chart_",
+            filter_definition$input_id
+          ),
+          label = filter_definition$label,
+          choices = filter_definition$choices,
+          selected = character(),
+          multiple = TRUE,
+          options = list(
+            plugins = list(
+              "remove_button"
+            ),
+            placeholder = "No filter"
+          ),
+          width = "100%"
+        )
+      }
+    )
+    
+    tagList(
+      filter_inputs,
+      
+      selectizeInput(
+        inputId = "line_chart_columns",
+        label = calculation_data$pivot_label,
+        choices = calculation_data$pivot_columns,
+        selected = character(),
+        multiple = TRUE,
+        options = list(
+          plugins = list(
+            "remove_button"
+          ),
+          placeholder = "Select one or more lines"
+        ),
+        width = "100%"
+      )
+    )
+  })
+  
+  #### Store the modal result when Done is clicked ####
+  observeEvent(
+    input$finish_line_chart_configuration,
+    {
+      chart_number <- active_line_chart()
+      chart_data <- line_chart_data()
+      
+      req(chart_number)
+      req(chart_data)
+      
+      selected_columns <- input$line_chart_columns
+      
+      if (
+        is.null(selected_columns) ||
+        length(selected_columns) == 0
+      ) {
+        showNotification(
+          "Select at least one line.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      calculation_data <- chart_data$calculation_data
+      
+      selected_filters <- list()
+      
+      for (
+        filter_definition in
+        calculation_data$row_filters
+      ) {
+        if (isTRUE(filter_definition$is_year)) {
+          next
+        }
+        
+        input_id <- paste0(
+          "line_chart_",
+          filter_definition$input_id
+        )
+        
+        selected_values <- input[[
+          input_id
+        ]]
+        
+        if (
+          !is.null(selected_values) &&
+          length(selected_values) > 0
+        ) {
+          selected_filters[[
+            filter_definition$column
+          ]] <- as.character(
+            selected_values
+          )
+        }
+      }
+      
+      year_mode <- input[[
+        paste0(
+          "page_chart_",
+          chart_number,
+          "_year_mode"
+        )
+      ]]
+      
+      recent_years <- input[[
+        paste0(
+          "page_chart_",
+          chart_number,
+          "_recent_years"
+        )
+      ]]
+      
+      if (
+        is.null(year_mode) ||
+        !year_mode %in% c(
+          "all",
+          "recent"
+        )
+      ) {
+        year_mode <- "all"
+      }
+      
+      if (
+        is.null(recent_years) ||
+        is.na(recent_years)
+      ) {
+        recent_years <- 5L
+      }
+      
+      page_line_chart_settings[[
+        as.character(chart_number)
+      ]] <- list(
+        matrix = chart_data$calculation_data$matrix,
+        year_column = chart_data$column,
+        available_years = chart_data$values,
+        year_mode = year_mode,
+        recent_years = as.integer(recent_years),
+        filters = selected_filters,
+        columns = as.character(
+          selected_columns
+        )
+      )
+      
+      summary_text <- paste(
+        selected_columns,
+        collapse = ", "
+      )
+      
+      value_input_id <- paste0(
+        "page_chart_",
+        chart_number,
+        "_lines_summary"
+      )
+      
+      shinyjs::runjs(
+        sprintf(
+          "$('#%s').val(%s);",
+          value_input_id,
+          jsonlite::toJSON(
+            summary_text,
+            auto_unbox = TRUE
+          )
+        )
+      )
+      
+      removeModal()
     }
   )
   
@@ -5534,6 +5897,172 @@ server <- function(input, output, session) {
         },
         ignoreInit = TRUE
       )
+    }
+  )
+  
+  ## Render UI for line charts ####
+  lapply(
+    seq_len(3),
+    function(chart_number) {
+      
+      local({
+        
+        current_chart <- chart_number
+        
+        output_id <- paste0(
+          "page_chart_",
+          current_chart,
+          "_type_options"
+        )
+        
+        output[[output_id]] <- renderUI({
+          
+          chart_type <- input[[
+            paste0(
+              "page_chart_",
+              current_chart,
+              "_type"
+            )
+          ]]
+          
+          matrix <- input[[
+            paste0(
+              "page_chart_",
+              current_chart,
+              "_matrix"
+            )
+          ]]
+          
+          if (
+            is.null(chart_type) ||
+            !identical(chart_type, "line") ||
+            is.null(matrix) ||
+            !nzchar(matrix)
+          ) {
+            return(NULL)
+          }
+          
+          existing_settings <- page_line_chart_settings[[
+            as.character(current_chart)
+          ]]
+          
+          year_mode <- if (
+            !is.null(existing_settings) &&
+            !is.null(existing_settings$year_mode)
+          ) {
+            existing_settings$year_mode
+          } else {
+            "all"
+          }
+          
+          recent_years <- if (
+            !is.null(existing_settings) &&
+            !is.null(existing_settings$recent_years)
+          ) {
+            existing_settings$recent_years
+          } else {
+            5L
+          }
+          
+          lines_summary <- if (
+            !is.null(existing_settings) &&
+            !is.null(existing_settings$columns) &&
+            length(existing_settings$columns) > 0
+          ) {
+            paste(
+              existing_settings$columns,
+              collapse = ", "
+            )
+          } else {
+            ""
+          }
+          
+          tagList(
+            
+            tags$hr(),
+            
+            h4("Line chart options"),
+            
+            radioButtons(
+              inputId = paste0(
+                "page_chart_",
+                current_chart,
+                "_year_mode"
+              ),
+              label = "Year range",
+              choices = c(
+                "All years" = "all",
+                "Most recent years" = "recent"
+              ),
+              selected = year_mode,
+              inline = TRUE
+            ),
+            
+            conditionalPanel(
+              condition = sprintf(
+                "input['page_chart_%d_year_mode'] == 'recent'",
+                current_chart
+              ),
+              
+              numericInput(
+                inputId = paste0(
+                  "page_chart_",
+                  current_chart,
+                  "_recent_years"
+                ),
+                label = "Number of most recent years",
+                value = recent_years,
+                min = 1,
+                step = 1,
+                width = "220px"
+              )
+            ),
+            
+            tags$div(
+              class = "form-group",
+              
+              tags$label("Lines"),
+              
+              tags$div(
+                class = "input-group",
+                
+                tags$input(
+                  id = paste0(
+                    "page_chart_",
+                    current_chart,
+                    "_lines_summary"
+                  ),
+                  type = "text",
+                  class = "form-control",
+                  value = lines_summary,
+                  readonly = "readonly",
+                  placeholder = "No lines configured"
+                ),
+                
+                tags$span(
+                  class = "input-group-btn",
+                  
+                  actionButton(
+                    inputId = paste0(
+                      "configure_page_chart_lines_",
+                      current_chart
+                    ),
+                    label = "Configure",
+                    icon = icon("sliders"),
+                    class = "btn-default"
+                  )
+                )
+              )
+            )
+          )
+        })
+        
+        outputOptions(
+          output,
+          output_id,
+          suspendWhenHidden = FALSE
+        )
+      })
     }
   )
   
