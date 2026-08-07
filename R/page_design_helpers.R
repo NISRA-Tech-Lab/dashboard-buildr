@@ -4181,23 +4181,33 @@ build_chart_filter_condition <- function(
     column_name,
     selected_values
 ) {
-  selected_values <- as.character(
-    selected_values
-  )
+  if (
+    is.null(selected_values) ||
+    length(selected_values) == 0
+  ) {
+    return(character())
+  }
   
-  js_values <- vapply(
-    selected_values,
-    javascript_string,
-    character(1)
-  )
+  js_value <- function(value) {
+    
+    if (identical(value, "__LATEST_YEAR__")) {
+      return("latest_year")
+    }
+    
+    if (identical(value, "__FIRST_YEAR__")) {
+      return("first_year")
+    }
+    
+    javascript_string(value)
+  }
   
-  if (length(js_values) == 1) {
+  if (length(selected_values) == 1) {
     return(
       paste0(
-        "row[",
+        'row[',
         javascript_string(column_name),
-        "] == ",
-        js_values
+        '] == ',
+        js_value(selected_values[[1]])
       )
     )
   }
@@ -4205,7 +4215,11 @@ build_chart_filter_condition <- function(
   paste0(
     "[",
     paste(
-      js_values,
+      vapply(
+        selected_values,
+        js_value,
+        character(1)
+      ),
       collapse = ", "
     ),
     "].includes(row[",
@@ -5166,4 +5180,764 @@ normalise_page_chart_capture_ids <- function(
   }
   
   html_lines
+}
+
+javascript_query_value <- function(value) {
+  
+  if (identical(value, "__LATEST_YEAR__")) {
+    return("latest_year")
+  }
+  
+  if (identical(value, "__FIRST_YEAR__")) {
+    return("first_year")
+  }
+  
+  javascript_string(value)
+}
+
+build_page_bar_chart_js <- function(
+    chart_number,
+    matrix,
+    settings
+) {
+  data_variable <- paste0(
+    matrix,
+    "_data"
+  )
+  
+  bar_data_variable <- paste0(
+    "bar_chart_",
+    chart_number,
+    "_data"
+  )
+  
+  query_variable <- paste0(
+    "bar_chart_",
+    chart_number,
+    "_query"
+  )
+  
+  filter_conditions <- character()
+  
+  #
+  # Ordinary filters
+  #
+  if (
+    !is.null(settings$filters) &&
+    length(settings$filters) > 0
+  ) {
+    for (
+      column_name in
+      names(settings$filters)
+    ) {
+      filter_conditions <- c(
+        filter_conditions,
+        build_chart_filter_condition(
+          column_name = column_name,
+          selected_values =
+            settings$filters[[
+              column_name
+            ]]
+        )
+      )
+    }
+  }
+  
+  #
+  # Restrict category values if selected.
+  #
+  if (
+    !is.null(settings$category_values) &&
+    length(settings$category_values) > 0
+  ) {
+    filter_conditions <- c(
+      filter_conditions,
+      build_chart_filter_condition(
+        column_name = settings$categories,
+        selected_values =
+          settings$category_values
+      )
+    )
+  }
+  
+  #
+  # Restrict series-category values.
+  #
+  if (
+    identical(
+      settings$series_source,
+      "category_values"
+    ) &&
+    !is.null(settings$bar_values) &&
+    length(settings$bar_values) > 0
+  ) {
+    filter_conditions <- c(
+      filter_conditions,
+      build_chart_filter_condition(
+        column_name = settings$bars,
+        selected_values =
+          settings$bar_values
+      )
+    )
+  }
+  
+  data_block <- if (
+    length(filter_conditions) == 0
+  ) {
+    paste0(
+      "    const ",
+      bar_data_variable,
+      " = ",
+      data_variable,
+      ";"
+    )
+  } else {
+    c(
+      paste0(
+        "    const ",
+        bar_data_variable,
+        " = ",
+        data_variable
+      ),
+      paste0(
+        "        .filter(row => ",
+        paste(
+          filter_conditions,
+          collapse = " &&\n                       "
+        ),
+        ");"
+      )
+    )
+  }
+  
+  #
+  # value and bars arguments
+  #
+  if (
+    identical(
+      settings$series_source,
+      "value_columns"
+    )
+  ) {
+    value_js <- paste0(
+      "[",
+      paste(
+        vapply(
+          settings$values,
+          javascript_string,
+          character(1)
+        ),
+        collapse = ", "
+      ),
+      "]"
+    )
+    
+    bars_js <- "null"
+    
+  } else {
+    value_js <- javascript_string(
+      settings$values[[1]]
+    )
+    
+    bars_js <- javascript_string(
+      settings$bars
+    )
+  }
+  
+  label_format <- if (
+    is.null(settings$label_format)
+  ) {
+    ""
+  } else {
+    settings$label_format
+  }
+  
+  align <- if (
+    is.null(settings$align) ||
+    !settings$align %in% c(
+      "vertical",
+      "horizontal"
+    )
+  ) {
+    "vertical"
+  } else {
+    settings$align
+  }
+  
+  y_label <- if (
+    is.null(settings$y_label)
+  ) {
+    ""
+  } else {
+    settings$y_label
+  }
+  
+  chart_call <- c(
+    "",
+    "    barChart({",
+    paste0(
+      "        data: ",
+      bar_data_variable,
+      ","
+    ),
+    paste0(
+      "        value: ",
+      value_js,
+      ","
+    ),
+    paste0(
+      "        bars: ",
+      bars_js,
+      ","
+    ),
+    paste0(
+      "        categories: ",
+      javascript_string(
+        settings$categories
+      ),
+      ","
+    ),
+    paste0(
+      '        canvas_id: "bar-canvas-',
+      chart_number,
+      '",'
+    ),
+    paste0(
+      '        expanded_canvas_id: "bar-canvas-',
+      chart_number,
+      '-expanded",'
+    ),
+    paste0(
+      "        label_format: ",
+      javascript_string(
+        label_format
+      ),
+      ","
+    ),
+    paste0(
+      "        stacked: ",
+      if (isTRUE(settings$stacked)) {
+        "true"
+      } else {
+        "false"
+      },
+      ","
+    ),
+    paste0(
+      "        align: ",
+      javascript_string(
+        align
+      ),
+      ","
+    ),
+    paste0(
+      "        y_label: ",
+      javascript_string(
+        y_label
+      )
+    ),
+    "    });"
+  )
+  
+  #
+  # Download query
+  #
+  query_entries <- character()
+  
+  if (
+    !is.null(settings$filters) &&
+    length(settings$filters) > 0
+  ) {
+    for (
+      column_name in
+      names(settings$filters)
+    ) {
+      values <- settings$filters[[
+        column_name
+      ]]
+      
+      value_js_query <- if (
+        length(values) == 1
+      ) {
+        javascript_query_value(
+          values[[1]]
+        )
+      } else {
+        paste0(
+          "[",
+          paste(
+            vapply(
+              values,
+              javascript_query_value,
+              character(1)
+            ),
+            collapse = ", "
+          ),
+          "]"
+        )
+      }
+      
+      query_entries <- c(
+        query_entries,
+        paste0(
+          "        ",
+          javascript_string(
+            column_name
+          ),
+          ": ",
+          value_js_query
+        )
+      )
+    }
+  }
+  
+  if (
+    !is.null(settings$category_values) &&
+    length(settings$category_values) > 0
+  ) {
+    category_query_value <- if (
+      length(settings$category_values) == 1
+    ) {
+      javascript_string(
+        settings$category_values[[1]]
+      )
+    } else {
+      paste0(
+        "[",
+        paste(
+          vapply(
+            settings$category_values,
+            javascript_string,
+            character(1)
+          ),
+          collapse = ", "
+        ),
+        "]"
+      )
+    }
+    
+    query_entries <- c(
+      query_entries,
+      paste0(
+        "        ",
+        javascript_string(
+          settings$categories
+        ),
+        ": ",
+        category_query_value
+      )
+    )
+  }
+  
+  if (
+    identical(
+      settings$series_source,
+      "category_values"
+    ) &&
+    length(settings$bar_values) > 0
+  ) {
+    bar_query_value <- if (
+      length(settings$bar_values) == 1
+    ) {
+      javascript_string(
+        settings$bar_values[[1]]
+      )
+    } else {
+      paste0(
+        "[",
+        paste(
+          vapply(
+            settings$bar_values,
+            javascript_string,
+            character(1)
+          ),
+          collapse = ", "
+        ),
+        "]"
+      )
+    }
+    
+    query_entries <- c(
+      query_entries,
+      paste0(
+        "        ",
+        javascript_string(
+          settings$bars
+        ),
+        ": ",
+        bar_query_value
+      )
+    )
+  }
+  
+  #
+  # Pivoted value dimension
+  #
+  if (
+    !is.null(settings$pivot_label) &&
+    nzchar(settings$pivot_label)
+  ) {
+    pivot_values <- settings$values
+    
+    pivot_query_value <- if (
+      length(pivot_values) == 1
+    ) {
+      javascript_string(
+        pivot_values[[1]]
+      )
+    } else {
+      paste0(
+        "[",
+        paste(
+          vapply(
+            pivot_values,
+            javascript_string,
+            character(1)
+          ),
+          collapse = ", "
+        ),
+        "]"
+      )
+    }
+    
+    query_entries <- c(
+      query_entries,
+      paste0(
+        "        ",
+        javascript_string(
+          settings$pivot_label
+        ),
+        ": ",
+        pivot_query_value
+      )
+    )
+  }
+  
+  query_block <- if (
+    length(query_entries) == 0
+  ) {
+    paste0(
+      "    const ",
+      query_variable,
+      " = {};"
+    )
+  } else {
+    c(
+      paste0(
+        "    const ",
+        query_variable,
+        " = {"
+      ),
+      paste0(
+        query_entries,
+        collapse = ",\n"
+      ),
+      "    };"
+    )
+  }
+  
+  download_call <- c(
+    "",
+    "    downloadButton(",
+    paste0(
+      '        "chart-',
+      chart_number,
+      '-capture",'
+    ),
+    paste0(
+      "        ",
+      javascript_string(
+        matrix
+      ),
+      ","
+    ),
+    paste0(
+      "        dateFormat(",
+      matrix,
+      "_meta.updated),"
+    ),
+    paste0(
+      "        ",
+      query_variable
+    ),
+    "    );"
+  )
+  
+  c(
+    data_block,
+    chart_call,
+    "",
+    query_block,
+    download_call
+  )
+}
+
+update_page_bar_chart_html <- function(
+    project_root,
+    page_href,
+    chart_number
+) {
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  html_lines <- readLines(
+    paths$html,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  chart_region <- find_page_chart_cards_region(
+    html_lines
+  )
+  
+  chart_start <- chart_region$chart_starts[
+    chart_number
+  ]
+  
+  chart_end <- find_closing_div(
+    html_lines,
+    chart_start
+  )
+  
+  body_starts <- grep(
+    'class=["\'][^"\']*\\bcard-body\\b',
+    html_lines,
+    perl = TRUE
+  )
+  
+  body_starts <- body_starts[
+    body_starts > chart_start &
+      body_starts < chart_end
+  ]
+  
+  if (length(body_starts) == 0) {
+    stop(
+      paste0(
+        "Could not identify the card body for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  body_start <- body_starts[[1]]
+  
+  body_end <- find_closing_div(
+    html_lines,
+    body_start
+  )
+  
+  indent <- sub(
+    "^(\\s*).*",
+    "\\1",
+    html_lines[
+      body_start
+    ]
+  )
+  
+  opening_tag <- sub(
+    "^(\\s*<div\\b[^>]*>).*",
+    "\\1",
+    html_lines[
+      body_start
+    ],
+    perl = TRUE
+  )
+  
+  replacement <- c(
+    opening_tag,
+    paste0(
+      indent,
+      "    ",
+      '<canvas id="bar-canvas-',
+      chart_number,
+      '" class="chart-canvas"></canvas>'
+    ),
+    paste0(
+      indent,
+      "</div>"
+    )
+  )
+  
+  updated_html <- c(
+    if (body_start > 1) {
+      html_lines[
+        seq_len(
+          body_start - 1
+        )
+      ]
+    } else {
+      character()
+    },
+    
+    replacement,
+    
+    if (body_end < length(html_lines)) {
+      html_lines[
+        seq.int(
+          body_end + 1,
+          length(html_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_html,
+    paths$html,
+    useBytes = TRUE
+  )
+  
+  invisible(
+    paths$html
+  )
+}
+
+update_page_bar_chart_js <- function(
+    project_root,
+    page_href,
+    chart_number,
+    bar_chart_js
+) {
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  js_lines <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  region_start <- grep(
+    "^\\s*//\\s*Insert chart content below\\s*$",
+    js_lines
+  )
+  
+  region_end <- grep(
+    "^\\s*//\\s*End chart content\\s*$",
+    js_lines
+  )
+  
+  chart_marker <- grep(
+    paste0(
+      "^\\s*//\\s*Content for chart\\s+",
+      chart_number,
+      "\\s*$"
+    ),
+    js_lines
+  )
+  
+  chart_marker <- chart_marker[
+    chart_marker > region_start &
+      chart_marker < region_end
+  ]
+  
+  all_chart_markers <- grep(
+    "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
+    js_lines
+  )
+  
+  all_chart_markers <- all_chart_markers[
+    all_chart_markers > region_start &
+      all_chart_markers < region_end
+  ]
+  
+  later_markers <- all_chart_markers[
+    all_chart_markers > chart_marker
+  ]
+  
+  section_end <- if (
+    length(later_markers) > 0
+  ) {
+    min(later_markers) - 1
+  } else {
+    region_end - 1
+  }
+  
+  section <- js_lines[
+    chart_marker:section_end
+  ]
+  
+  start_pattern <-
+    "^\\s*//\\s*BuildR bar chart config start\\s*$"
+  
+  end_pattern <-
+    "^\\s*//\\s*BuildR bar chart config end\\s*$"
+  
+  old_start <- grep(
+    start_pattern,
+    section
+  )
+  
+  old_end <- grep(
+    end_pattern,
+    section
+  )
+  
+  if (
+    length(old_start) == 1 &&
+    length(old_end) == 1
+  ) {
+    section <- section[
+      -seq.int(
+        old_start,
+        old_end
+      )
+    ]
+  }
+  
+  while (
+    length(section) > 0 &&
+    !nzchar(
+      trimws(
+        tail(section, 1)
+      )
+    )
+  ) {
+    section <- head(
+      section,
+      -1
+    )
+  }
+  
+  replacement_section <- c(
+    section,
+    "",
+    "    // BuildR bar chart config start",
+    bar_chart_js,
+    "    // BuildR bar chart config end",
+    "",
+    ""
+  )
+  
+  updated_js <- c(
+    js_lines[
+      seq_len(
+        chart_marker - 1
+      )
+    ],
+    replacement_section,
+    js_lines[
+      seq.int(
+        section_end + 1,
+        length(js_lines)
+      )
+    ]
+  )
+  
+  writeLines(
+    updated_js,
+    paths$js,
+    useBytes = TRUE
+  )
+  
+  invisible(
+    paths$js
+  )
 }

@@ -5435,6 +5435,80 @@ server <- function(input, output, session) {
               ]] <- line_settings
             }
             
+            if (chart_type == "bar") {
+              
+              bar_settings <- page_bar_chart_settings[[
+                as.character(
+                  current_chart
+                )
+              ]]
+              
+              if (
+                is.null(bar_settings) ||
+                !isTRUE(bar_settings$configured)
+              ) {
+                showNotification(
+                  paste0(
+                    "Configure the bar data for chart ",
+                    current_chart,
+                    " before saving."
+                  ),
+                  type = "error"
+                )
+                
+                return()
+              }
+              
+              #
+              # Refresh presentation settings from the accordion.
+              #
+              bar_settings$label_format <- input[[
+                paste0(
+                  "page_chart_",
+                  current_chart,
+                  "_bar_label_format"
+                )
+              ]]
+              
+              bar_settings$stacked <- isTRUE(
+                input[[
+                  paste0(
+                    "page_chart_",
+                    current_chart,
+                    "_bar_stacked"
+                  )
+                ]]
+              )
+              
+              bar_settings$align <- input[[
+                paste0(
+                  "page_chart_",
+                  current_chart,
+                  "_bar_align"
+                )
+              ]]
+              
+              bar_settings$y_label <- input[[
+                paste0(
+                  "page_chart_",
+                  current_chart,
+                  "_bar_y_label"
+                )
+              ]]
+              
+              page_bar_chart_settings[[
+                as.character(
+                  current_chart
+                )
+              ]] <- bar_settings
+              
+              bar_chart_js <- build_page_bar_chart_js(
+                chart_number = current_chart,
+                matrix = bar_settings$matrix,
+                settings = bar_settings
+              )
+            }
+            
             matrix <- input[[
               paste0(
                 "page_chart_",
@@ -5485,6 +5559,22 @@ server <- function(input, output, session) {
                     page_href = selected_page_design(),
                     chart_number = current_chart,
                     line_chart_js = line_chart_js
+                  )
+                }
+                
+                if (chart_type == "bar") {
+                  
+                  update_page_bar_chart_html(
+                    project_root = folder(),
+                    page_href = selected_page_design(),
+                    chart_number = current_chart
+                  )
+                  
+                  update_page_bar_chart_js(
+                    project_root = folder(),
+                    page_href = selected_page_design(),
+                    chart_number = current_chart,
+                    bar_chart_js = bar_chart_js
                   )
                 }
                 
