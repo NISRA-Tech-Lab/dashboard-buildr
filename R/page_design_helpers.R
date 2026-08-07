@@ -5948,3 +5948,689 @@ page_pie_type_choices <- function() {
     "Doughnut" = "doughnut"
   )
 }
+
+build_page_pie_chart_js <- function(
+    chart_number,
+    matrix,
+    settings
+) {
+  
+  data_variable <- paste0(
+    matrix,
+    "_data"
+  )
+  
+  pie_data_variable <- paste0(
+    "pie_chart_",
+    chart_number,
+    "_data"
+  )
+  
+  query_variable <- paste0(
+    "pie_chart_",
+    chart_number,
+    "_query"
+  )
+  
+  filter_conditions <- character()
+  
+  if (
+    !is.null(settings$filters) &&
+    length(settings$filters) > 0
+  ) {
+    
+    for (
+      column_name in
+      names(settings$filters)
+    ) {
+      
+      filter_conditions <- c(
+        filter_conditions,
+        build_chart_filter_condition(
+          column_name = column_name,
+          selected_values =
+            settings$filters[[
+              column_name
+            ]]
+        )
+      )
+    }
+  }
+  
+  #
+  # Build:
+  #
+  # const pie_chart_1_data = MATRIX_data
+  #     .filter(...)
+  #     .map(col => ({
+  #         "Males": col["Males"],
+  #         "Females": col["Females"]
+  #     }))[0];
+  #
+  
+  mapped_values <- vapply(
+    settings$values,
+    function(value_name) {
+      
+      paste0(
+        "            ",
+        javascript_string(value_name),
+        ": col[",
+        javascript_string(value_name),
+        "]"
+      )
+    },
+    character(1)
+  )
+  
+  if (length(filter_conditions) > 0) {
+    
+    data_block <- c(
+      paste0(
+        "    const ",
+        pie_data_variable,
+        " = ",
+        data_variable
+      ),
+      paste0(
+        "        .filter(row => ",
+        paste(
+          filter_conditions,
+          collapse = " &&\n                       "
+        ),
+        ")"
+      ),
+      "        .map(col => ({",
+      paste0(
+        mapped_values,
+        collapse = ",\n"
+      ),
+      "        }))[0];"
+    )
+    
+  } else {
+    
+    data_block <- c(
+      paste0(
+        "    const ",
+        pie_data_variable,
+        " = ",
+        data_variable
+      ),
+      "        .map(col => ({",
+      paste0(
+        mapped_values,
+        collapse = ",\n"
+      ),
+      "        }))[0];"
+    )
+  }
+  
+  pie_type <- if (
+    !is.null(settings$type) &&
+    settings$type %in% c(
+      "pie",
+      "doughnut"
+    )
+  ) {
+    settings$type
+  } else {
+    "pie"
+  }
+  
+  chart_call <- c(
+    "",
+    "    pieChart({",
+    paste0(
+      "        data: ",
+      pie_data_variable,
+      ","
+    ),
+    paste0(
+      '        canvas_id: "pie-canvas-',
+      chart_number,
+      '",'
+    ),
+    paste0(
+      '        expanded_canvas_id: "pie-canvas-',
+      chart_number,
+      '-expanded",'
+    ),
+    paste0(
+      "        type: ",
+      javascript_string(pie_type)
+    ),
+    "    });"
+  )
+  
+  #
+  # Download query.
+  #
+  
+  query_entries <- character()
+  
+  if (
+    !is.null(settings$filters) &&
+    length(settings$filters) > 0
+  ) {
+    
+    for (
+      column_name in
+      names(settings$filters)
+    ) {
+      
+      values <- settings$filters[[
+        column_name
+      ]]
+      
+      query_value <- if (
+        length(values) == 1
+      ) {
+        
+        javascript_query_value(
+          values[[1]]
+        )
+        
+      } else {
+        
+        paste0(
+          "[",
+          paste(
+            vapply(
+              values,
+              javascript_query_value,
+              character(1)
+            ),
+            collapse = ", "
+          ),
+          "]"
+        )
+      }
+      
+      query_entries <- c(
+        query_entries,
+        paste0(
+          "        ",
+          javascript_string(
+            column_name
+          ),
+          ": ",
+          query_value
+        )
+      )
+    }
+  }
+  
+  #
+  # The selected CSV value columns represent values of
+  # the final/pivoted metadata variable.
+  #
+  
+  if (
+    !is.null(settings$pivot_label) &&
+    nzchar(settings$pivot_label)
+  ) {
+    
+    pivot_query_value <- if (
+      length(settings$values) == 1
+    ) {
+      
+      javascript_string(
+        settings$values[[1]]
+      )
+      
+    } else {
+      
+      paste0(
+        "[",
+        paste(
+          vapply(
+            settings$values,
+            javascript_string,
+            character(1)
+          ),
+          collapse = ", "
+        ),
+        "]"
+      )
+    }
+    
+    query_entries <- c(
+      query_entries,
+      paste0(
+        "        ",
+        javascript_string(
+          settings$pivot_label
+        ),
+        ": ",
+        pivot_query_value
+      )
+    )
+  }
+  
+  query_block <- if (
+    length(query_entries) == 0
+  ) {
+    
+    paste0(
+      "    const ",
+      query_variable,
+      " = {};"
+    )
+    
+  } else {
+    
+    c(
+      paste0(
+        "    const ",
+        query_variable,
+        " = {"
+      ),
+      paste0(
+        query_entries,
+        collapse = ",\n"
+      ),
+      "    };"
+    )
+  }
+  
+  download_call <- c(
+    "",
+    "    downloadButton(",
+    paste0(
+      '        "chart-',
+      chart_number,
+      '-capture",'
+    ),
+    paste0(
+      "        ",
+      javascript_string(matrix),
+      ","
+    ),
+    paste0(
+      "        dateFormat(",
+      matrix,
+      "_meta.updated),"
+    ),
+    paste0(
+      "        ",
+      query_variable
+    ),
+    "    );"
+  )
+  
+  c(
+    data_block,
+    chart_call,
+    "",
+    query_block,
+    download_call
+  )
+}
+
+update_page_pie_chart_html <- function(
+    project_root,
+    page_href,
+    chart_number
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$html)) {
+    stop(
+      paste0(
+        paths$href,
+        " was not found."
+      )
+    )
+  }
+  
+  chart_number <- as.integer(
+    chart_number
+  )
+  
+  if (
+    length(chart_number) != 1 ||
+    is.na(chart_number) ||
+    chart_number < 1 ||
+    chart_number > 3
+  ) {
+    stop(
+      "A valid chart number is required."
+    )
+  }
+  
+  html_lines <- readLines(
+    paths$html,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  chart_region <- find_page_chart_cards_region(
+    html_lines
+  )
+  
+  if (
+    chart_number >
+    length(chart_region$chart_starts)
+  ) {
+    stop(
+      paste0(
+        "Chart ",
+        chart_number,
+        " was not found."
+      )
+    )
+  }
+  
+  chart_start <- chart_region$chart_starts[
+    chart_number
+  ]
+  
+  chart_end <- find_closing_div(
+    html_lines,
+    chart_start
+  )
+  
+  body_starts <- grep(
+    'class=["\'][^"\']*\\bcard-body\\b',
+    html_lines,
+    perl = TRUE
+  )
+  
+  body_starts <- body_starts[
+    body_starts > chart_start &
+      body_starts < chart_end
+  ]
+  
+  if (length(body_starts) == 0) {
+    stop(
+      paste0(
+        "Could not identify the card body for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  body_start <- body_starts[[1]]
+  
+  body_end <- find_closing_div(
+    html_lines,
+    body_start
+  )
+  
+  indent <- sub(
+    "^(\\s*).*",
+    "\\1",
+    html_lines[
+      body_start
+    ]
+  )
+  
+  opening_tag <- sub(
+    "^(\\s*<div\\b[^>]*>).*",
+    "\\1",
+    html_lines[
+      body_start
+    ],
+    perl = TRUE
+  )
+  
+  replacement <- c(
+    opening_tag,
+    paste0(
+      indent,
+      "    ",
+      '<canvas id="pie-canvas-',
+      chart_number,
+      '" class="chart-canvas"></canvas>'
+    ),
+    paste0(
+      indent,
+      "</div>"
+    )
+  )
+  
+  updated_html <- c(
+    if (body_start > 1) {
+      html_lines[
+        seq_len(
+          body_start - 1
+        )
+      ]
+    } else {
+      character()
+    },
+    
+    replacement,
+    
+    if (body_end < length(html_lines)) {
+      html_lines[
+        seq.int(
+          body_end + 1,
+          length(html_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_html,
+    paths$html,
+    useBytes = TRUE
+  )
+  
+  invisible(
+    paths$html
+  )
+}
+
+update_page_pie_chart_js <- function(
+    project_root,
+    page_href,
+    chart_number,
+    pie_chart_js
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$js)) {
+    stop(
+      paste0(
+        paths$js_filename,
+        " was not found."
+      )
+    )
+  }
+  
+  js_lines <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  region_start <- grep(
+    "^\\s*//\\s*Insert chart content below\\s*$",
+    js_lines
+  )
+  
+  region_end <- grep(
+    "^\\s*//\\s*End chart content\\s*$",
+    js_lines
+  )
+  
+  if (
+    length(region_start) != 1 ||
+    length(region_end) != 1 ||
+    region_end <= region_start
+  ) {
+    stop(
+      "Could not uniquely identify the chart JavaScript region."
+    )
+  }
+  
+  chart_marker <- grep(
+    paste0(
+      "^\\s*//\\s*Content for chart\\s+",
+      chart_number,
+      "\\s*$"
+    ),
+    js_lines
+  )
+  
+  chart_marker <- chart_marker[
+    chart_marker > region_start &
+      chart_marker < region_end
+  ]
+  
+  if (length(chart_marker) != 1) {
+    stop(
+      paste0(
+        "Could not identify the JavaScript section for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  all_chart_markers <- grep(
+    "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
+    js_lines
+  )
+  
+  all_chart_markers <- all_chart_markers[
+    all_chart_markers > region_start &
+      all_chart_markers < region_end
+  ]
+  
+  later_markers <- all_chart_markers[
+    all_chart_markers > chart_marker
+  ]
+  
+  section_end <- if (
+    length(later_markers) > 0
+  ) {
+    min(later_markers) - 1
+  } else {
+    region_end - 1
+  }
+  
+  section <- js_lines[
+    chart_marker:section_end
+  ]
+  
+  start_pattern <-
+    "^\\s*//\\s*BuildR pie chart config start\\s*$"
+  
+  end_pattern <-
+    "^\\s*//\\s*BuildR pie chart config end\\s*$"
+  
+  old_start <- grep(
+    start_pattern,
+    section
+  )
+  
+  old_end <- grep(
+    end_pattern,
+    section
+  )
+  
+  if (
+    length(old_start) == 1 &&
+    length(old_end) == 1 &&
+    old_end > old_start
+  ) {
+    
+    section <- section[
+      -seq.int(
+        old_start,
+        old_end
+      )
+    ]
+    
+  } else if (
+    length(old_start) > 0 ||
+    length(old_end) > 0
+  ) {
+    
+    stop(
+      paste0(
+        "Could not safely identify the existing pie-chart ",
+        "configuration for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  while (
+    length(section) > 0 &&
+    !nzchar(
+      trimws(
+        tail(
+          section,
+          1
+        )
+      )
+    )
+  ) {
+    section <- head(
+      section,
+      -1
+    )
+  }
+  
+  replacement_section <- c(
+    section,
+    "",
+    "    // BuildR pie chart config start",
+    pie_chart_js,
+    "    // BuildR pie chart config end",
+    "",
+    ""
+  )
+  
+  updated_js <- c(
+    if (chart_marker > 1) {
+      js_lines[
+        seq_len(
+          chart_marker - 1
+        )
+      ]
+    } else {
+      character()
+    },
+    
+    replacement_section,
+    
+    if (section_end < length(js_lines)) {
+      js_lines[
+        seq.int(
+          section_end + 1,
+          length(js_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_js,
+    paths$js,
+    useBytes = TRUE
+  )
+  
+  invisible(
+    paths$js
+  )
+}

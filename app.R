@@ -5515,6 +5515,70 @@ server <- function(input, output, session) {
               )
             }
             
+            if (chart_type == "pie") {
+              
+              pie_settings <- page_pie_chart_settings[[
+                as.character(
+                  current_chart
+                )
+              ]]
+              
+              if (
+                is.null(pie_settings) ||
+                !isTRUE(
+                  pie_settings$configured
+                )
+              ) {
+                
+                showNotification(
+                  paste0(
+                    "Configure the pie data for chart ",
+                    current_chart,
+                    " before saving."
+                  ),
+                  type = "error"
+                )
+                
+                return()
+              }
+              
+              pie_type <- input[[
+                paste0(
+                  "page_chart_",
+                  current_chart,
+                  "_pie_type"
+                )
+              ]]
+              
+              if (
+                is.null(pie_type) ||
+                !pie_type %in% c(
+                  "pie",
+                  "doughnut"
+                )
+              ) {
+                pie_type <- "pie"
+              }
+              
+              pie_settings$type <-
+                pie_type
+              
+              page_pie_chart_settings[[
+                as.character(
+                  current_chart
+                )
+              ]] <- pie_settings
+              
+              pie_chart_js <- build_page_pie_chart_js(
+                chart_number =
+                  current_chart,
+                matrix =
+                  pie_settings$matrix,
+                settings =
+                  pie_settings
+              )
+            }
+            
             matrix <- input[[
               paste0(
                 "page_chart_",
@@ -5584,6 +5648,26 @@ server <- function(input, output, session) {
                   )
                 }
                 
+                if (chart_type == "pie") {
+                  
+                  update_page_pie_chart_html(
+                    project_root = folder(),
+                    page_href =
+                      selected_page_design(),
+                    chart_number =
+                      current_chart
+                  )
+                  
+                  update_page_pie_chart_js(
+                    project_root = folder(),
+                    page_href =
+                      selected_page_design(),
+                    chart_number =
+                      current_chart,
+                    pie_chart_js =
+                      pie_chart_js
+                  )
+                }
                 
                 refreshed_titles <- read_page_chart_titles(
                   project_root = folder(),
