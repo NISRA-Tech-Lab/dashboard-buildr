@@ -5517,7 +5517,7 @@ server <- function(input, output, session) {
               error = function(error) {
                 showNotification(
                   paste(
-                    "Chart title could not be updated:",
+                    "Chart could not be updated:",
                     conditionMessage(error)
                   ),
                   type = "error",

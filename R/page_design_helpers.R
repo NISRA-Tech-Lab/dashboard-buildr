@@ -4720,31 +4720,51 @@ update_page_line_chart_html <- function(
       body_starts < chart_end
   ]
   
-  if (length(body_starts) != 1) {
+  if (length(body_starts) == 0) {
     stop(
       paste0(
-        "Could not uniquely identify the card body for chart ",
+        "Could not identify the card body for chart ",
         chart_number,
         "."
       )
     )
   }
   
-  body_start <- body_starts[[1]]
+  #
+  # There should normally be exactly one card body.
+  #
+  # Older BuildR output may contain duplicate card bodies from
+  # the previous line-chart HTML writer. If so, treat all of
+  # those bodies as one replaceable region and repair the HTML.
+  #
   
-  body_end <- find_closing_div(
-    html_lines,
-    body_start
+  body_ends <- vapply(
+    body_starts,
+    function(body_start) {
+      find_closing_div(
+        html_lines,
+        body_start
+      )
+    },
+    integer(1)
   )
   
-  opening_line <- html_lines[
-    body_start
+  replacement_start <- min(
+    body_starts
+  )
+  
+  replacement_end <- max(
+    body_ends
+  )
+  
+  first_body_line <- html_lines[
+    replacement_start
   ]
   
   indent <- sub(
     "^(\\s*).*",
     "\\1",
-    opening_line
+    first_body_line
   )
   
   content_indent <- paste0(
@@ -4752,24 +4772,37 @@ update_page_line_chart_html <- function(
     "    "
   )
   
+  #
+  # Preserve the class list from the first card-body while
+  # discarding any existing inner HTML.
+  #
+  
+  opening_tag <- sub(
+    "^(\\s*<div\\b[^>]*>).*",
+    "\\1",
+    first_body_line,
+    perl = TRUE
+  )
+  
   replacement <- c(
-    opening_line,
+    opening_tag,
     paste0(
       content_indent,
       '<canvas id="line-canvas-',
       chart_number,
       '" class="chart-canvas"></canvas>'
     ),
-    html_lines[
-      body_end
-    ]
+    paste0(
+      indent,
+      "</div>"
+    )
   )
   
   updated_html <- c(
-    if (body_start > 1) {
+    if (replacement_start > 1) {
       html_lines[
         seq_len(
-          body_start - 1
+          replacement_start - 1
         )
       ]
     } else {
@@ -4778,10 +4811,10 @@ update_page_line_chart_html <- function(
     
     replacement,
     
-    if (body_end < length(html_lines)) {
+    if (replacement_end < length(html_lines)) {
       html_lines[
         seq.int(
-          body_end + 1,
+          replacement_end + 1,
           length(html_lines)
         )
       ]
