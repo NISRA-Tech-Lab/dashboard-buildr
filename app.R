@@ -5630,6 +5630,45 @@ server <- function(input, output, session) {
                 )
             }
             
+            if (chart_type == "pyramid") {
+              
+              pyramid_settings <-
+                page_pyramid_chart_settings[[
+                  as.character(
+                    current_chart
+                  )
+                ]]
+              
+              if (
+                is.null(pyramid_settings) ||
+                !isTRUE(
+                  pyramid_settings$configured
+                )
+              ) {
+                
+                showNotification(
+                  paste0(
+                    "Configure the population pyramid data for chart ",
+                    current_chart,
+                    " before saving."
+                  ),
+                  type = "error"
+                )
+                
+                return()
+              }
+              
+              pyramid_chart_js <-
+                build_page_pyramid_chart_js(
+                  chart_number =
+                    current_chart,
+                  matrix =
+                    pyramid_settings$matrix,
+                  settings =
+                    pyramid_settings
+                )
+            }
+            
             matrix <- input[[
               paste0(
                 "page_chart_",
@@ -5741,6 +5780,29 @@ server <- function(input, output, session) {
                       current_chart,
                     treemap_chart_js =
                       treemap_chart_js
+                  )
+                }
+                
+                if (chart_type == "pyramid") {
+                  
+                  update_page_chart_canvas_html(
+                    project_root = folder(),
+                    page_href =
+                      selected_page_design(),
+                    chart_number =
+                      current_chart,
+                    canvas_prefix =
+                      "pyramid"
+                  )
+                  
+                  update_page_pyramid_chart_js(
+                    project_root = folder(),
+                    page_href =
+                      selected_page_design(),
+                    chart_number =
+                      current_chart,
+                    pyramid_chart_js =
+                      pyramid_chart_js
                   )
                 }
                 
