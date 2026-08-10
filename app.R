@@ -5585,6 +5585,45 @@ server <- function(input, output, session) {
               )
             }
             
+            if (chart_type == "treemap") {
+              
+              treemap_settings <-
+                page_treemap_chart_settings[[
+                  as.character(
+                    current_chart
+                  )
+                ]]
+              
+              if (
+                is.null(treemap_settings) ||
+                !isTRUE(
+                  treemap_settings$configured
+                )
+              ) {
+                
+                showNotification(
+                  paste0(
+                    "Configure the treemap data for chart ",
+                    current_chart,
+                    " before saving."
+                  ),
+                  type = "error"
+                )
+                
+                return()
+              }
+              
+              treemap_chart_js <-
+                build_page_treemap_chart_js(
+                  chart_number =
+                    current_chart,
+                  matrix =
+                    treemap_settings$matrix,
+                  settings =
+                    treemap_settings
+                )
+            }
+            
             matrix <- input[[
               paste0(
                 "page_chart_",
@@ -5673,6 +5712,29 @@ server <- function(input, output, session) {
                       current_chart,
                     pie_chart_js =
                       pie_chart_js
+                  )
+                }
+                
+                if (chart_type == "treemap") {
+                  
+                  update_page_chart_canvas_html(
+                    project_root = folder(),
+                    page_href =
+                      selected_page_design(),
+                    chart_number =
+                      current_chart,
+                    canvas_prefix =
+                      "treemap"
+                  )
+                  
+                  update_page_treemap_chart_js(
+                    project_root = folder(),
+                    page_href =
+                      selected_page_design(),
+                    chart_number =
+                      current_chart,
+                    treemap_chart_js =
+                      treemap_chart_js
                   )
                 }
                 

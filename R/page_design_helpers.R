@@ -6293,3 +6293,462 @@ remove_page_chart_config_blocks <- function(
   
   section
 }
+
+build_page_treemap_chart_js <- function(
+    chart_number,
+    matrix,
+    settings
+) {
+  
+  data_variable <- paste0(
+    matrix,
+    "_data"
+  )
+  
+  treemap_data_variable <- paste0(
+    "treemap_chart_",
+    chart_number,
+    "_data"
+  )
+  
+  query_variable <- paste0(
+    "treemap_chart_",
+    chart_number,
+    "_query"
+  )
+  
+  filter_conditions <- character()
+  
+  #
+  # Ordinary filters
+  #
+  if (
+    !is.null(settings$filters) &&
+    length(settings$filters) > 0
+  ) {
+    
+    for (
+      column_name in
+      names(settings$filters)
+    ) {
+      
+      filter_conditions <- c(
+        filter_conditions,
+        build_chart_filter_condition(
+          column_name = column_name,
+          selected_values =
+            settings$filters[[
+              column_name
+            ]]
+        )
+      )
+    }
+  }
+  
+  #
+  # Restrict category values if the user selected any.
+  #
+  if (
+    !is.null(settings$category_values) &&
+    length(settings$category_values) > 0
+  ) {
+    
+    filter_conditions <- c(
+      filter_conditions,
+      build_chart_filter_condition(
+        column_name =
+          settings$categories,
+        selected_values =
+          settings$category_values
+      )
+    )
+  }
+  
+  #
+  # Build filtered data object.
+  #
+  if (length(filter_conditions) > 0) {
+    
+    data_block <- c(
+      paste0(
+        "    const ",
+        treemap_data_variable,
+        " = ",
+        data_variable
+      ),
+      paste0(
+        "        .filter(row => ",
+        paste(
+          filter_conditions,
+          collapse = " &&\n                       "
+        ),
+        ");"
+      )
+    )
+    
+  } else {
+    
+    data_block <- paste0(
+      "    const ",
+      treemap_data_variable,
+      " = ",
+      data_variable,
+      ";"
+    )
+  }
+  
+  #
+  # treemapChart() call
+  #
+  chart_call <- c(
+    "",
+    "    treemapChart({",
+    paste0(
+      "        data: ",
+      treemap_data_variable,
+      ","
+    ),
+    paste0(
+      "        categories: ",
+      javascript_string(
+        settings$categories
+      ),
+      ","
+    ),
+    paste0(
+      "        value: ",
+      javascript_string(
+        settings$value
+      ),
+      ","
+    ),
+    paste0(
+      '        canvas_id: "treemap-canvas-',
+      chart_number,
+      '",'
+    ),
+    paste0(
+      '        expanded_canvas_id: "treemap-canvas-',
+      chart_number,
+      '-expanded"'
+    ),
+    "    });"
+  )
+  
+  #
+  # Download query
+  #
+  query_entries <- character()
+  
+  if (
+    !is.null(settings$filters) &&
+    length(settings$filters) > 0
+  ) {
+    
+    for (
+      column_name in
+      names(settings$filters)
+    ) {
+      
+      values <- settings$filters[[
+        column_name
+      ]]
+      
+      query_value <- if (
+        length(values) == 1
+      ) {
+        
+        javascript_query_value(
+          values[[1]]
+        )
+        
+      } else {
+        
+        paste0(
+          "[",
+          paste(
+            vapply(
+              values,
+              javascript_query_value,
+              character(1)
+            ),
+            collapse = ", "
+          ),
+          "]"
+        )
+      }
+      
+      query_entries <- c(
+        query_entries,
+        paste0(
+          "        ",
+          javascript_string(
+            column_name
+          ),
+          ": ",
+          query_value
+        )
+      )
+    }
+  }
+  
+  #
+  # Add selected category values to query.
+  #
+  if (
+    !is.null(settings$category_values) &&
+    length(settings$category_values) > 0
+  ) {
+    
+    category_query_value <- if (
+      length(settings$category_values) == 1
+    ) {
+      
+      javascript_string(
+        settings$category_values[[1]]
+      )
+      
+    } else {
+      
+      paste0(
+        "[",
+        paste(
+          vapply(
+            settings$category_values,
+            javascript_string,
+            character(1)
+          ),
+          collapse = ", "
+        ),
+        "]"
+      )
+    }
+    
+    query_entries <- c(
+      query_entries,
+      paste0(
+        "        ",
+        javascript_string(
+          settings$categories
+        ),
+        ": ",
+        category_query_value
+      )
+    )
+  }
+  
+  #
+  # The selected value column represents one value of
+  # the pivoted metadata variable.
+  #
+  if (
+    !is.null(settings$pivot_label) &&
+    nzchar(settings$pivot_label)
+  ) {
+    
+    query_entries <- c(
+      query_entries,
+      paste0(
+        "        ",
+        javascript_string(
+          settings$pivot_label
+        ),
+        ": ",
+        javascript_string(
+          settings$value
+        )
+      )
+    )
+  }
+  
+  query_block <- if (
+    length(query_entries) == 0
+  ) {
+    
+    paste0(
+      "    const ",
+      query_variable,
+      " = {};"
+    )
+    
+  } else {
+    
+    c(
+      paste0(
+        "    const ",
+        query_variable,
+        " = {"
+      ),
+      paste0(
+        query_entries,
+        collapse = ",\n"
+      ),
+      "    };"
+    )
+  }
+  
+  download_call <- c(
+    "",
+    "    downloadButton(",
+    paste0(
+      '        "chart-',
+      chart_number,
+      '-capture",'
+    ),
+    paste0(
+      "        ",
+      javascript_string(matrix),
+      ","
+    ),
+    paste0(
+      "        dateFormat(",
+      matrix,
+      "_meta.updated),"
+    ),
+    paste0(
+      "        ",
+      query_variable
+    ),
+    "    );"
+  )
+  
+  c(
+    data_block,
+    chart_call,
+    "",
+    query_block,
+    download_call
+  )
+}
+
+update_page_treemap_chart_js <- function(
+    project_root,
+    page_href,
+    chart_number,
+    treemap_chart_js
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  js_lines <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  region_start <- grep(
+    "^\\s*//\\s*Insert chart content below\\s*$",
+    js_lines
+  )
+  
+  region_end <- grep(
+    "^\\s*//\\s*End chart content\\s*$",
+    js_lines
+  )
+  
+  chart_marker <- grep(
+    paste0(
+      "^\\s*//\\s*Content for chart\\s+",
+      chart_number,
+      "\\s*$"
+    ),
+    js_lines
+  )
+  
+  chart_marker <- chart_marker[
+    chart_marker > region_start &
+      chart_marker < region_end
+  ]
+  
+  if (length(chart_marker) != 1) {
+    stop(
+      paste0(
+        "Could not identify the JavaScript section for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  all_chart_markers <- grep(
+    "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
+    js_lines
+  )
+  
+  all_chart_markers <- all_chart_markers[
+    all_chart_markers > region_start &
+      all_chart_markers < region_end
+  ]
+  
+  later_markers <- all_chart_markers[
+    all_chart_markers > chart_marker
+  ]
+  
+  section_end <- if (
+    length(later_markers) > 0
+  ) {
+    min(later_markers) - 1
+  } else {
+    region_end - 1
+  }
+  
+  section <- js_lines[
+    chart_marker:section_end
+  ]
+  
+  #
+  # Remove any previous managed chart block,
+  # regardless of its chart type.
+  #
+  section <- remove_page_chart_config_blocks(
+    section
+  )
+  
+  replacement_section <- c(
+    section,
+    "",
+    "    // BuildR treemap chart config start",
+    treemap_chart_js,
+    "    // BuildR treemap chart config end",
+    "",
+    ""
+  )
+  
+  updated_js <- c(
+    if (chart_marker > 1) {
+      js_lines[
+        seq_len(
+          chart_marker - 1
+        )
+      ]
+    } else {
+      character()
+    },
+    
+    replacement_section,
+    
+    if (section_end < length(js_lines)) {
+      js_lines[
+        seq.int(
+          section_end + 1,
+          length(js_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_js,
+    paths$js,
+    useBytes = TRUE
+  )
+  
+  invisible(
+    paths$js
+  )
+}
