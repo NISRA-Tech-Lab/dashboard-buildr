@@ -4083,6 +4083,12 @@ server <- function(input, output, session) {
   
   treemap_chart_data <- reactiveVal(NULL)
   
+  page_pyramid_chart_settings <- reactiveValues()
+  
+  active_pyramid_chart <- reactiveVal(NULL)
+  
+  pyramid_chart_data <- reactiveVal(NULL)
+  
   line_chart_modal_lines <- reactiveVal(
     list()
   )
@@ -7816,6 +7822,84 @@ server <- function(input, output, session) {
             )
           }
           
+          #
+          # POPULATION PYRAMID
+          #
+          
+          if (identical(chart_type, "pyramid")) {
+            
+            existing_settings <- page_pyramid_chart_settings[[
+              as.character(current_chart)
+            ]]
+            
+            data_summary <- if (
+              !is.null(existing_settings) &&
+              isTRUE(existing_settings$configured)
+            ) {
+              paste0(
+                existing_settings$values[[1]],
+                " / ",
+                existing_settings$values[[2]]
+              )
+            } else {
+              ""
+            }
+            
+            return(
+              tagList(
+                
+                tags$hr(),
+                
+                h4("Population pyramid options"),
+                
+                tags$div(
+                  class = "form-group",
+                  
+                  tags$label("Pyramid data"),
+                  
+                  tags$div(
+                    class = "input-group",
+                    
+                    tags$input(
+                      id = paste0(
+                        "page_chart_",
+                        current_chart,
+                        "_pyramid_data_summary"
+                      ),
+                      type = "text",
+                      class = "form-control",
+                      value = data_summary,
+                      readonly = "readonly",
+                      placeholder = "No pyramid data configured"
+                    ),
+                    
+                    tags$span(
+                      class = "input-group-btn",
+                      
+                      actionButton(
+                        inputId = paste0(
+                          "configure_page_chart_pyramid_",
+                          current_chart
+                        ),
+                        label = "Configure",
+                        icon = icon("sliders"),
+                        class = "btn-default"
+                      )
+                    )
+                  )
+                ),
+                
+                tags$p(
+                  class = "help-block",
+                  paste(
+                    "Choose the year, category variable and two numeric",
+                    "values used for the left and right sides of the pyramid."
+                  )
+                )
+              )
+            )
+          }
+          
           NULL
         })
         
@@ -9302,6 +9386,696 @@ server <- function(input, output, session) {
         "page_chart_",
         chart_number,
         "_treemap_data_summary"
+      )
+      
+      shinyjs::runjs(
+        sprintf(
+          "$('#%s').val(%s);",
+          summary_input_id,
+          jsonlite::toJSON(
+            summary_text,
+            auto_unbox = TRUE
+          )
+        )
+      )
+      
+      removeModal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  ### Connect the configure pyramid buttons ####
+  
+  lapply(
+    seq_len(3),
+    function(chart_number) {
+      
+      local({
+        
+        current_chart <- chart_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "configure_page_chart_pyramid_",
+              current_chart
+            )
+          ]],
+          {
+            
+            req(folder())
+            req(selected_page_design())
+            
+            matrix <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_matrix"
+              )
+            ]]
+            
+            req(matrix)
+            req(nzchar(matrix))
+            
+            chart_type <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_type"
+              )
+            ]]
+            
+            req(
+              identical(
+                chart_type,
+                "pyramid"
+              )
+            )
+            
+            calculation_data <- tryCatch(
+              read_card_calculation_data(
+                project_root = folder(),
+                matrix = matrix
+              ),
+              error = function(error) {
+                
+                showNotification(
+                  paste(
+                    "The population pyramid data could not be loaded:",
+                    conditionMessage(error)
+                  ),
+                  type = "error",
+                  duration = NULL
+                )
+                
+                NULL
+              }
+            )
+            
+            req(calculation_data)
+            
+            existing_settings <-
+              page_pyramid_chart_settings[[
+                as.character(current_chart)
+              ]]
+            
+            if (
+              !is.null(existing_settings) &&
+              !identical(
+                existing_settings$matrix,
+                matrix
+              )
+            ) {
+              existing_settings <- NULL
+            }
+            
+            active_pyramid_chart(
+              current_chart
+            )
+            
+            pyramid_chart_data(
+              list(
+                calculation_data =
+                  calculation_data,
+                existing_settings =
+                  existing_settings
+              )
+            )
+            
+            showModal(
+              modalDialog(
+                title = paste(
+                  "Configure population pyramid for chart",
+                  current_chart
+                ),
+                
+                tags$p(
+                  paste(
+                    "Choose the year, category variable and the",
+                    "two values that should appear on either side",
+                    "of the pyramid."
+                  )
+                ),
+                
+                uiOutput(
+                  "pyramid_chart_configuration_ui"
+                ),
+                
+                footer = tagList(
+                  modalButton(
+                    "Cancel"
+                  ),
+                  
+                  actionButton(
+                    inputId =
+                      "finish_pyramid_chart_configuration",
+                    label = "Done",
+                    class = "btn-primary"
+                  )
+                ),
+                
+                size = "l",
+                easyClose = FALSE
+              )
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
+  
+  ### Render pyramid configuration modal ####
+  
+  output$pyramid_chart_configuration_ui <- renderUI({
+    
+    modal_data <- pyramid_chart_data()
+    
+    req(modal_data)
+    
+    calculation_data <-
+      modal_data$calculation_data
+    
+    existing_settings <-
+      modal_data$existing_settings
+    
+    row_filters <-
+      calculation_data$row_filters
+    
+    row_variable_names <- vapply(
+      row_filters,
+      function(filter_definition) {
+        filter_definition$column
+      },
+      character(1)
+    )
+    
+    #
+    # Find the Year filter definition.
+    #
+    year_definitions <- Filter(
+      function(filter_definition) {
+        isTRUE(filter_definition$is_year)
+      },
+      row_filters
+    )
+    
+    year_definition <- if (
+      length(year_definitions) > 0
+    ) {
+      year_definitions[[1]]
+    } else {
+      NULL
+    }
+    
+    year_column <- if (
+      !is.null(year_definition)
+    ) {
+      year_definition$column
+    } else {
+      "Year"
+    }
+    
+    year_choices <- if (
+      !is.null(year_definition)
+    ) {
+      year_definition$choices
+    } else {
+      character()
+    }
+    
+    existing_year <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$year)
+    ) {
+      existing_settings$year
+    } else {
+      "__LATEST_YEAR__"
+    }
+    
+    #
+    # Category variable.
+    #
+    category_variables <- setdiff(
+      row_variable_names,
+      year_column
+    )
+    
+    existing_category <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$categories) &&
+      existing_settings$categories %in%
+      category_variables
+    ) {
+      existing_settings$categories
+    } else {
+      ""
+    }
+    
+    selected_category <-
+      input$pyramid_chart_categories
+    
+    if (
+      is.null(selected_category) ||
+      !selected_category %in%
+      category_variables
+    ) {
+      selected_category <-
+        existing_category
+    }
+    
+    category_definition <- NULL
+    
+    if (nzchar(selected_category)) {
+      
+      matching_category <- Filter(
+        function(filter_definition) {
+          identical(
+            filter_definition$column,
+            selected_category
+          )
+        },
+        row_filters
+      )
+      
+      if (length(matching_category) == 1) {
+        category_definition <-
+          matching_category[[1]]
+      }
+    }
+    
+    category_value_choices <- if (
+      !is.null(category_definition)
+    ) {
+      category_definition$choices
+    } else {
+      character()
+    }
+    
+    existing_category_values <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$category_values)
+    ) {
+      existing_settings$category_values
+    } else {
+      character()
+    }
+    
+    #
+    # Left/right value selections.
+    #
+    existing_values <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$values) &&
+      length(existing_settings$values) == 2
+    ) {
+      existing_settings$values
+    } else {
+      c("", "")
+    }
+    
+    #
+    # Additional filters exclude Year and category.
+    #
+    ordinary_filters <- Filter(
+      function(filter_definition) {
+        
+        column_name <-
+          filter_definition$column
+        
+        if (identical(
+          column_name,
+          year_column
+        )) {
+          return(FALSE)
+        }
+        
+        if (
+          nzchar(selected_category) &&
+          identical(
+            column_name,
+            selected_category
+          )
+        ) {
+          return(FALSE)
+        }
+        
+        TRUE
+      },
+      row_filters
+    )
+    
+    filter_inputs <- lapply(
+      ordinary_filters,
+      function(filter_definition) {
+        
+        existing_filter_values <- character()
+        
+        if (
+          !is.null(existing_settings) &&
+          !is.null(existing_settings$filters) &&
+          !is.null(
+            existing_settings$filters[[
+              filter_definition$column
+            ]]
+          )
+        ) {
+          existing_filter_values <-
+            existing_settings$filters[[
+              filter_definition$column
+            ]]
+        }
+        
+        selectizeInput(
+          inputId = paste0(
+            "pyramid_chart_filter_",
+            filter_definition$input_id
+          ),
+          label =
+            filter_definition$label,
+          choices =
+            filter_definition$choices,
+          selected =
+            existing_filter_values,
+          multiple = TRUE,
+          options = list(
+            plugins = list(
+              "remove_button"
+            ),
+            placeholder = "No filter"
+          ),
+          width = "100%"
+        )
+      }
+    )
+    
+    tagList(
+      
+      h4("Year"),
+      
+      selectInput(
+        inputId =
+          "pyramid_chart_year",
+        label =
+          year_column,
+        choices =
+          year_choices,
+        selected =
+          existing_year,
+        width = "100%"
+      ),
+      
+      tags$hr(),
+      
+      h4("Categories"),
+      
+      selectInput(
+        inputId =
+          "pyramid_chart_categories",
+        label =
+          "Category variable",
+        choices = c(
+          "Select a variable" = "",
+          stats::setNames(
+            category_variables,
+            category_variables
+          )
+        ),
+        selected =
+          selected_category,
+        width = "100%"
+      ),
+      
+      if (nzchar(selected_category)) {
+        
+        selectizeInput(
+          inputId =
+            "pyramid_chart_category_values",
+          label = paste0(
+            selected_category,
+            " values"
+          ),
+          choices =
+            category_value_choices,
+          selected =
+            existing_category_values,
+          multiple = TRUE,
+          options = list(
+            plugins = list(
+              "remove_button"
+            ),
+            placeholder = "All values"
+          ),
+          width = "100%"
+        )
+      },
+      
+      tags$hr(),
+      
+      h4("Population values"),
+      
+      tags$p(
+        class = "help-block",
+        paste(
+          "The first value is drawn on the left side of the",
+          "pyramid and the second value on the right."
+        )
+      ),
+      
+      selectInput(
+        inputId =
+          "pyramid_chart_left_value",
+        label =
+          "Left-hand value",
+        choices = c(
+          "Select a value" = "",
+          calculation_data$pivot_columns
+        ),
+        selected =
+          existing_values[[1]],
+        width = "100%"
+      ),
+      
+      selectInput(
+        inputId =
+          "pyramid_chart_right_value",
+        label =
+          "Right-hand value",
+        choices = c(
+          "Select a value" = "",
+          calculation_data$pivot_columns
+        ),
+        selected =
+          existing_values[[2]],
+        width = "100%"
+      ),
+      
+      tags$hr(),
+      
+      h4("Additional filters"),
+      
+      if (length(filter_inputs) > 0) {
+        tagList(
+          filter_inputs
+        )
+      } else {
+        tags$em(
+          "No additional filters are available."
+        )
+      }
+    )
+  })
+  
+  ### Finish pyramid configuration ####
+  
+  observeEvent(
+    input$finish_pyramid_chart_configuration,
+    {
+      
+      chart_number <-
+        active_pyramid_chart()
+      
+      modal_data <-
+        pyramid_chart_data()
+      
+      req(chart_number)
+      req(modal_data)
+      
+      calculation_data <-
+        modal_data$calculation_data
+      
+      year <-
+        input$pyramid_chart_year
+      
+      if (
+        is.null(year) ||
+        !nzchar(year)
+      ) {
+        showNotification(
+          "Choose a year.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      categories <-
+        input$pyramid_chart_categories
+      
+      if (
+        is.null(categories) ||
+        !nzchar(categories)
+      ) {
+        showNotification(
+          "Choose a category variable.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      left_value <-
+        input$pyramid_chart_left_value
+      
+      right_value <-
+        input$pyramid_chart_right_value
+      
+      if (
+        is.null(left_value) ||
+        !nzchar(left_value) ||
+        is.null(right_value) ||
+        !nzchar(right_value)
+      ) {
+        showNotification(
+          "Choose both pyramid values.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      if (identical(
+        left_value,
+        right_value
+      )) {
+        showNotification(
+          paste(
+            "The left-hand and right-hand values",
+            "must be different."
+          ),
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      category_values <-
+        input$pyramid_chart_category_values
+      
+      if (is.null(category_values)) {
+        category_values <-
+          character()
+      }
+      
+      #
+      # Determine Year variable so it is not also
+      # stored as an ordinary filter.
+      #
+      year_definitions <- Filter(
+        function(filter_definition) {
+          isTRUE(filter_definition$is_year)
+        },
+        calculation_data$row_filters
+      )
+      
+      year_column <- if (
+        length(year_definitions) > 0
+      ) {
+        year_definitions[[1]]$column
+      } else {
+        "Year"
+      }
+      
+      selected_filters <- list()
+      
+      for (
+        filter_definition in
+        calculation_data$row_filters
+      ) {
+        
+        column_name <-
+          filter_definition$column
+        
+        if (
+          identical(
+            column_name,
+            year_column
+          ) ||
+          identical(
+            column_name,
+            categories
+          )
+        ) {
+          next
+        }
+        
+        input_id <- paste0(
+          "pyramid_chart_filter_",
+          filter_definition$input_id
+        )
+        
+        selected_values <- input[[
+          input_id
+        ]]
+        
+        if (
+          !is.null(selected_values) &&
+          length(selected_values) > 0
+        ) {
+          selected_filters[[
+            column_name
+          ]] <- as.character(
+            selected_values
+          )
+        }
+      }
+      
+      page_pyramid_chart_settings[[
+        as.character(chart_number)
+      ]] <- list(
+        configured = TRUE,
+        matrix =
+          calculation_data$matrix,
+        pivot_label =
+          calculation_data$pivot_label,
+        year =
+          year,
+        year_column =
+          year_column,
+        categories =
+          categories,
+        category_values =
+          as.character(
+            category_values
+          ),
+        values = c(
+          left_value,
+          right_value
+        ),
+        filters =
+          selected_filters
+      )
+      
+      summary_text <- paste0(
+        left_value,
+        " / ",
+        right_value
+      )
+      
+      summary_input_id <- paste0(
+        "page_chart_",
+        chart_number,
+        "_pyramid_data_summary"
       )
       
       shinyjs::runjs(
