@@ -5679,6 +5679,45 @@ server <- function(input, output, session) {
                 )
             }
             
+            if (chart_type == "table") {
+              
+              table_settings <-
+                page_table_settings[[
+                  as.character(
+                    current_chart
+                  )
+                ]]
+              
+              if (
+                is.null(table_settings) ||
+                !isTRUE(
+                  table_settings$configured
+                )
+              ) {
+                
+                showNotification(
+                  paste0(
+                    "Configure the table data for chart ",
+                    current_chart,
+                    " before saving."
+                  ),
+                  type = "error"
+                )
+                
+                return()
+              }
+              
+              table_js <-
+                build_page_table_js(
+                  chart_number =
+                    current_chart,
+                  matrix =
+                    table_settings$matrix,
+                  settings =
+                    table_settings
+                )
+            }
+            
             matrix <- input[[
               paste0(
                 "page_chart_",
@@ -5813,6 +5852,27 @@ server <- function(input, output, session) {
                       current_chart,
                     pyramid_chart_js =
                       pyramid_chart_js
+                  )
+                }
+                
+                if (chart_type == "table") {
+                  
+                  update_page_table_html(
+                    project_root = folder(),
+                    page_href =
+                      selected_page_design(),
+                    chart_number =
+                      current_chart
+                  )
+                  
+                  update_page_table_js(
+                    project_root = folder(),
+                    page_href =
+                      selected_page_design(),
+                    chart_number =
+                      current_chart,
+                    table_js =
+                      table_js
                   )
                 }
                 

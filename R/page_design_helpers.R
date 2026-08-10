@@ -7237,3 +7237,660 @@ update_page_pyramid_chart_js <- function(
     paths$js
   )
 }
+
+build_page_table_js <- function(
+    chart_number,
+    matrix,
+    settings
+) {
+  
+  data_variable <- paste0(
+    matrix,
+    "_data"
+  )
+  
+  source_variable <- paste0(
+    "table_",
+    chart_number,
+    "_data_source"
+  )
+  
+  table_variable <- paste0(
+    "table_",
+    chart_number,
+    "_data"
+  )
+  
+  query_variable <- paste0(
+    "table_",
+    chart_number,
+    "_query"
+  )
+  
+  filter_conditions <- character()
+  
+  #
+  # Build row filters.
+  #
+  if (
+    !is.null(settings$filters) &&
+    length(settings$filters) > 0
+  ) {
+    
+    for (
+      column_name in
+      names(settings$filters)
+    ) {
+      
+      filter_conditions <- c(
+        filter_conditions,
+        build_chart_filter_condition(
+          column_name = column_name,
+          selected_values =
+            settings$filters[[
+              column_name
+            ]]
+        )
+      )
+    }
+  }
+  
+  #
+  # Build filtered source data.
+  #
+  data_block <- if (
+    length(filter_conditions) > 0
+  ) {
+    
+    c(
+      paste0(
+        "    const ",
+        source_variable,
+        " = ",
+        data_variable
+      ),
+      paste0(
+        "        .filter(row => ",
+        paste(
+          filter_conditions,
+          collapse = " &&\n                       "
+        ),
+        ");"
+      )
+    )
+    
+  } else {
+    
+    paste0(
+      "    const ",
+      source_variable,
+      " = ",
+      data_variable,
+      ";"
+    )
+  }
+  
+  #
+  # Build table_data object.
+  #
+  table_entries <- lapply(
+    settings$columns,
+    function(column_settings) {
+      
+      c(
+        paste0(
+          "        ",
+          javascript_string(
+            column_settings$heading
+          ),
+          ": {"
+        ),
+        paste0(
+          "            values: ",
+          source_variable
+        ),
+        paste0(
+          "                .map(col => col[",
+          javascript_string(
+            column_settings$source
+          ),
+          "]),"
+        ),
+        paste0(
+          "            format: ",
+          javascript_string(
+            column_settings$format
+          )
+        ),
+        "        }"
+      )
+    }
+  )
+  
+  table_object_lines <- character()
+  
+  for (
+    column_number in
+    seq_along(table_entries)
+  ) {
+    
+    entry <- table_entries[[
+      column_number
+    ]]
+    
+    if (
+      column_number <
+      length(table_entries)
+    ) {
+      entry[
+        length(entry)
+      ] <- paste0(
+        entry[
+          length(entry)
+        ],
+        ","
+      )
+    }
+    
+    table_object_lines <- c(
+      table_object_lines,
+      entry,
+      if (
+        column_number <
+        length(table_entries)
+      ) {
+        ""
+      } else {
+        character()
+      }
+    )
+  }
+  
+  table_block <- c(
+    "",
+    paste0(
+      "    const ",
+      table_variable,
+      " = {"
+    ),
+    table_object_lines,
+    "    };"
+  )
+  
+  #
+  # Insert table into standard + expanded targets.
+  #
+  table_call <- c(
+    "",
+    "    insertTable(",
+    paste0(
+      '        "table-',
+      chart_number,
+      '",'
+    ),
+    paste0(
+      '        "table-',
+      chart_number,
+      '-expanded",'
+    ),
+    paste0(
+      "        ",
+      table_variable
+    ),
+    "    );"
+  )
+  
+  #
+  # Build download query from filters.
+  #
+  query_entries <- character()
+  
+  if (
+    !is.null(settings$filters) &&
+    length(settings$filters) > 0
+  ) {
+    
+    for (
+      column_name in
+      names(settings$filters)
+    ) {
+      
+      values <- settings$filters[[
+        column_name
+      ]]
+      
+      query_value <- if (
+        length(values) == 1
+      ) {
+        
+        javascript_query_value(
+          values[[1]]
+        )
+        
+      } else {
+        
+        paste0(
+          "[",
+          paste(
+            vapply(
+              values,
+              javascript_query_value,
+              character(1)
+            ),
+            collapse = ", "
+          ),
+          "]"
+        )
+      }
+      
+      query_entries <- c(
+        query_entries,
+        paste0(
+          "        ",
+          javascript_string(
+            column_name
+          ),
+          ": ",
+          query_value
+        )
+      )
+    }
+  }
+  
+  #
+  # If displayed columns come from pivoted value columns,
+  # add those values to the source query.
+  #
+  if (
+    !is.null(settings$pivot_label) &&
+    nzchar(settings$pivot_label)
+  ) {
+    
+    displayed_sources <- unique(
+      vapply(
+        settings$columns,
+        function(column_settings) {
+          column_settings$source
+        },
+        character(1)
+      )
+    )
+    
+    #
+    # Only sources matching actual pivot columns should
+    # be added under pivot_label.
+    #
+    pivot_sources <- intersect(
+      displayed_sources,
+      settings$pivot_columns %||%
+        character()
+    )
+    
+    if (length(pivot_sources) > 0) {
+      
+      pivot_query_value <- if (
+        length(pivot_sources) == 1
+      ) {
+        javascript_string(
+          pivot_sources[[1]]
+        )
+      } else {
+        paste0(
+          "[",
+          paste(
+            vapply(
+              pivot_sources,
+              javascript_string,
+              character(1)
+            ),
+            collapse = ", "
+          ),
+          "]"
+        )
+      }
+      
+      query_entries <- c(
+        query_entries,
+        paste0(
+          "        ",
+          javascript_string(
+            settings$pivot_label
+          ),
+          ": ",
+          pivot_query_value
+        )
+      )
+    }
+  }
+  
+  query_block <- if (
+    length(query_entries) == 0
+  ) {
+    
+    paste0(
+      "    const ",
+      query_variable,
+      " = {};"
+    )
+    
+  } else {
+    
+    c(
+      paste0(
+        "    const ",
+        query_variable,
+        " = {"
+      ),
+      paste0(
+        query_entries,
+        collapse = ",\n"
+      ),
+      "    };"
+    )
+  }
+  
+  download_call <- c(
+    "",
+    "    downloadButton(",
+    paste0(
+      '        "chart-',
+      chart_number,
+      '-capture",'
+    ),
+    paste0(
+      "        ",
+      javascript_string(matrix),
+      ","
+    ),
+    paste0(
+      "        dateFormat(",
+      matrix,
+      "_meta.updated),"
+    ),
+    paste0(
+      "        ",
+      query_variable
+    ),
+    "    );"
+  )
+  
+  c(
+    data_block,
+    table_block,
+    table_call,
+    "",
+    query_block,
+    download_call
+  )
+}
+
+update_page_table_html <- function(
+    project_root,
+    page_href,
+    chart_number
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  html_lines <- readLines(
+    paths$html,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  chart_region <- find_page_chart_cards_region(
+    html_lines
+  )
+  
+  chart_start <- chart_region$chart_starts[
+    chart_number
+  ]
+  
+  chart_end <- find_closing_div(
+    html_lines,
+    chart_start
+  )
+  
+  body_starts <- grep(
+    'class=["\'][^"\']*\\bcard-body\\b',
+    html_lines,
+    perl = TRUE
+  )
+  
+  body_starts <- body_starts[
+    body_starts > chart_start &
+      body_starts < chart_end
+  ]
+  
+  if (length(body_starts) != 1) {
+    stop(
+      paste0(
+        "Could not uniquely identify the card body for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  body_start <- body_starts[[1]]
+  
+  body_end <- find_closing_div(
+    html_lines,
+    body_start
+  )
+  
+  indent <- sub(
+    "^(\\s*).*",
+    "\\1",
+    html_lines[
+      body_start
+    ]
+  )
+  
+  opening_tag <- sub(
+    "^(\\s*<div\\b[^>]*>).*",
+    "\\1",
+    html_lines[
+      body_start
+    ],
+    perl = TRUE
+  )
+  
+  replacement <- c(
+    opening_tag,
+    
+    paste0(
+      indent,
+      "    ",
+      '<table id="table-',
+      chart_number,
+      '" class="table">'
+    ),
+    
+    paste0(
+      indent,
+      "        <thead></thead>"
+    ),
+    
+    paste0(
+      indent,
+      "        <tbody></tbody>"
+    ),
+    
+    paste0(
+      indent,
+      "    </table>"
+    ),
+    
+    paste0(
+      indent,
+      "</div>"
+    )
+  )
+  
+  updated_html <- c(
+    if (body_start > 1) {
+      html_lines[
+        seq_len(
+          body_start - 1
+        )
+      ]
+    } else {
+      character()
+    },
+    
+    replacement,
+    
+    if (body_end < length(html_lines)) {
+      html_lines[
+        seq.int(
+          body_end + 1,
+          length(html_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_html,
+    paths$html,
+    useBytes = TRUE
+  )
+  
+  invisible(
+    paths$html
+  )
+}
+
+update_page_table_js <- function(
+    project_root,
+    page_href,
+    chart_number,
+    table_js
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  js_lines <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  region_start <- grep(
+    "^\\s*//\\s*Insert chart content below\\s*$",
+    js_lines
+  )
+  
+  region_end <- grep(
+    "^\\s*//\\s*End chart content\\s*$",
+    js_lines
+  )
+  
+  chart_marker <- grep(
+    paste0(
+      "^\\s*//\\s*Content for chart\\s+",
+      chart_number,
+      "\\s*$"
+    ),
+    js_lines
+  )
+  
+  chart_marker <- chart_marker[
+    chart_marker > region_start &
+      chart_marker < region_end
+  ]
+  
+  if (length(chart_marker) != 1) {
+    stop(
+      paste0(
+        "Could not identify the JavaScript section for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  all_chart_markers <- grep(
+    "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
+    js_lines
+  )
+  
+  all_chart_markers <- all_chart_markers[
+    all_chart_markers > region_start &
+      all_chart_markers < region_end
+  ]
+  
+  later_markers <- all_chart_markers[
+    all_chart_markers > chart_marker
+  ]
+  
+  section_end <- if (
+    length(later_markers) > 0
+  ) {
+    min(later_markers) - 1
+  } else {
+    region_end - 1
+  }
+  
+  section <- js_lines[
+    chart_marker:section_end
+  ]
+  
+  section <- remove_page_chart_config_blocks(
+    section
+  )
+  
+  replacement_section <- c(
+    section,
+    "",
+    "    // BuildR table chart config start",
+    table_js,
+    "    // BuildR table chart config end",
+    "",
+    ""
+  )
+  
+  updated_js <- c(
+    if (chart_marker > 1) {
+      js_lines[
+        seq_len(
+          chart_marker - 1
+        )
+      ]
+    } else {
+      character()
+    },
+    
+    replacement_section,
+    
+    if (section_end < length(js_lines)) {
+      js_lines[
+        seq.int(
+          section_end + 1,
+          length(js_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_js,
+    paths$js,
+    useBytes = TRUE
+  )
+  
+  invisible(
+    paths$js
+  )
+}
