@@ -4089,6 +4089,16 @@ server <- function(input, output, session) {
   
   pyramid_chart_data <- reactiveVal(NULL)
   
+  page_table_settings <- reactiveValues()
+  
+  active_table_chart <- reactiveVal(NULL)
+  
+  table_chart_data <- reactiveVal(NULL)
+  
+  table_modal_columns <- reactiveVal(
+    list()
+  )
+  
   line_chart_modal_lines <- reactiveVal(
     list()
   )
@@ -7962,6 +7972,88 @@ server <- function(input, output, session) {
             )
           }
           
+          #
+          # TABLE
+          #
+          
+          if (identical(chart_type, "table")) {
+            
+            existing_settings <- page_table_settings[[
+              as.character(current_chart)
+            ]]
+            
+            data_summary <- if (
+              !is.null(existing_settings) &&
+              isTRUE(existing_settings$configured) &&
+              !is.null(existing_settings$columns)
+            ) {
+              paste0(
+                length(existing_settings$columns),
+                if (length(existing_settings$columns) == 1) {
+                  " column configured"
+                } else {
+                  " columns configured"
+                }
+              )
+            } else {
+              ""
+            }
+            
+            return(
+              tagList(
+                
+                tags$hr(),
+                
+                h4("Table options"),
+                
+                tags$div(
+                  class = "form-group",
+                  
+                  tags$label("Table data"),
+                  
+                  tags$div(
+                    class = "input-group",
+                    
+                    tags$input(
+                      id = paste0(
+                        "page_chart_",
+                        current_chart,
+                        "_table_data_summary"
+                      ),
+                      type = "text",
+                      class = "form-control",
+                      value = data_summary,
+                      readonly = "readonly",
+                      placeholder = "No table data configured"
+                    ),
+                    
+                    tags$span(
+                      class = "input-group-btn",
+                      
+                      actionButton(
+                        inputId = paste0(
+                          "configure_page_chart_table_",
+                          current_chart
+                        ),
+                        label = "Configure",
+                        icon = icon("sliders"),
+                        class = "btn-default"
+                      )
+                    )
+                  )
+                ),
+                
+                tags$p(
+                  class = "help-block",
+                  paste(
+                    "Choose the rows used by the table and configure",
+                    "the columns that should be displayed."
+                  )
+                )
+              )
+            )
+          }
+          
           NULL
         })
         
@@ -10138,6 +10230,748 @@ server <- function(input, output, session) {
         "page_chart_",
         chart_number,
         "_pyramid_data_summary"
+      )
+      
+      shinyjs::runjs(
+        sprintf(
+          "$('#%s').val(%s);",
+          summary_input_id,
+          jsonlite::toJSON(
+            summary_text,
+            auto_unbox = TRUE
+          )
+        )
+      )
+      
+      removeModal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  ### Connect the configure table buttons ####
+  
+  lapply(
+    seq_len(3),
+    function(chart_number) {
+      
+      local({
+        
+        current_chart <- chart_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "configure_page_chart_table_",
+              current_chart
+            )
+          ]],
+          {
+            
+            req(folder())
+            req(selected_page_design())
+            
+            matrix <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_matrix"
+              )
+            ]]
+            
+            req(matrix)
+            req(nzchar(matrix))
+            
+            chart_type <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_type"
+              )
+            ]]
+            
+            req(
+              identical(
+                chart_type,
+                "table"
+              )
+            )
+            
+            calculation_data <- tryCatch(
+              read_card_calculation_data(
+                project_root = folder(),
+                matrix = matrix
+              ),
+              error = function(error) {
+                
+                showNotification(
+                  paste(
+                    "The table data could not be loaded:",
+                    conditionMessage(error)
+                  ),
+                  type = "error",
+                  duration = NULL
+                )
+                
+                NULL
+              }
+            )
+            
+            req(calculation_data)
+            
+            existing_settings <-
+              page_table_settings[[
+                as.character(current_chart)
+              ]]
+            
+            if (
+              !is.null(existing_settings) &&
+              !identical(
+                existing_settings$matrix,
+                matrix
+              )
+            ) {
+              existing_settings <- NULL
+            }
+            
+            existing_columns <- if (
+              !is.null(existing_settings) &&
+              !is.null(existing_settings$columns) &&
+              length(existing_settings$columns) > 0
+            ) {
+              existing_settings$columns
+            } else {
+              list(
+                list(
+                  heading = "",
+                  source = "",
+                  format = "string"
+                )
+              )
+            }
+            
+            active_table_chart(
+              current_chart
+            )
+            
+            table_modal_columns(
+              existing_columns
+            )
+            
+            table_chart_data(
+              list(
+                calculation_data =
+                  calculation_data,
+                existing_settings =
+                  existing_settings
+              )
+            )
+            
+            showModal(
+              modalDialog(
+                title = paste(
+                  "Configure table for chart",
+                  current_chart
+                ),
+                
+                tags$p(
+                  paste(
+                    "Choose the rows used by the table, then",
+                    "configure each displayed column."
+                  )
+                ),
+                
+                uiOutput(
+                  "table_chart_configuration_ui"
+                ),
+                
+                footer = tagList(
+                  modalButton(
+                    "Cancel"
+                  ),
+                  
+                  actionButton(
+                    inputId =
+                      "finish_table_chart_configuration",
+                    label = "Done",
+                    class = "btn-primary"
+                  )
+                ),
+                
+                size = "l",
+                easyClose = FALSE
+              )
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
+  
+  ### Render table configuration modal ####
+  
+  output$table_chart_configuration_ui <- renderUI({
+    
+    modal_data <- table_chart_data()
+    
+    req(modal_data)
+    
+    calculation_data <-
+      modal_data$calculation_data
+    
+    existing_settings <-
+      modal_data$existing_settings
+    
+    columns <- table_modal_columns()
+    
+    #
+    # Shared row filters.
+    #
+    filter_inputs <- lapply(
+      calculation_data$row_filters,
+      function(filter_definition) {
+        
+        existing_filter_values <- character()
+        
+        if (
+          !is.null(existing_settings) &&
+          !is.null(existing_settings$filters) &&
+          !is.null(
+            existing_settings$filters[[
+              filter_definition$column
+            ]]
+          )
+        ) {
+          existing_filter_values <-
+            existing_settings$filters[[
+              filter_definition$column
+            ]]
+        }
+        
+        selectizeInput(
+          inputId = paste0(
+            "table_chart_filter_",
+            filter_definition$input_id
+          ),
+          label =
+            filter_definition$label,
+          choices =
+            filter_definition$choices,
+          selected =
+            existing_filter_values,
+          multiple = TRUE,
+          options = list(
+            plugins = list(
+              "remove_button"
+            ),
+            placeholder = "No filter"
+          ),
+          width = "100%"
+        )
+      }
+    )
+    
+    #
+    # Source choices include both row variables and
+    # pivoted value columns.
+    #
+    row_columns <- vapply(
+      calculation_data$row_filters,
+      function(filter_definition) {
+        filter_definition$column
+      },
+      character(1)
+    )
+    
+    source_columns <- unique(
+      c(
+        row_columns,
+        calculation_data$pivot_columns
+      )
+    )
+    
+    column_ui <- lapply(
+      seq_along(columns),
+      function(column_number) {
+        
+        column_settings <-
+          columns[[column_number]]
+        
+        tags$div(
+          class = "panel panel-default",
+          
+          tags$div(
+            class = "panel-heading",
+            
+            tags$strong(
+              paste(
+                "Column",
+                column_number
+              )
+            )
+          ),
+          
+          tags$div(
+            class = "panel-body",
+            
+            textInput(
+              inputId = paste0(
+                "table_chart_column_",
+                column_number,
+                "_heading"
+              ),
+              label = "Heading",
+              value =
+                column_settings$heading %||% "",
+              width = "100%",
+              placeholder =
+                "Displayed column heading"
+            ),
+            
+            selectInput(
+              inputId = paste0(
+                "table_chart_column_",
+                column_number,
+                "_source"
+              ),
+              label = "Source column",
+              choices = c(
+                "Select a source" = "",
+                stats::setNames(
+                  source_columns,
+                  source_columns
+                )
+              ),
+              selected =
+                column_settings$source %||% "",
+              width = "100%"
+            ),
+            
+            selectInput(
+              inputId = paste0(
+                "table_chart_column_",
+                column_number,
+                "_format"
+              ),
+              label = "Format",
+              choices = c(
+                "Text" = "string",
+                "Number" = "number",
+                "Change" = "change",
+                "Change percentage" =
+                  "change_percent"
+              ),
+              selected =
+                column_settings$format %||%
+                "string",
+              width = "100%"
+            ),
+            
+            if (length(columns) > 1) {
+              actionButton(
+                inputId = paste0(
+                  "remove_table_chart_column_",
+                  column_number
+                ),
+                label = "Remove column",
+                icon = icon("trash"),
+                class = "btn-danger btn-sm"
+              )
+            }
+          )
+        )
+      }
+    )
+    
+    tagList(
+      
+      h4("Rows"),
+      
+      tags$p(
+        class = "help-block",
+        paste(
+          "Apply filters to choose which source rows",
+          "should appear in the table."
+        )
+      ),
+      
+      if (length(filter_inputs) > 0) {
+        tagList(
+          filter_inputs
+        )
+      } else {
+        tags$em(
+          "No row filters are available."
+        )
+      },
+      
+      tags$hr(),
+      
+      h4("Columns"),
+      
+      tags$p(
+        class = "help-block",
+        paste(
+          "Choose the displayed heading, source column",
+          "and formatting for each table column."
+        )
+      ),
+      
+      tagList(
+        column_ui
+      ),
+      
+      actionButton(
+        inputId =
+          "add_table_chart_column",
+        label =
+          "Add another column",
+        icon =
+          icon("plus"),
+        class =
+          "btn-default"
+      )
+    )
+  })
+  
+  ### Add table column ####
+  
+  observeEvent(
+    input$add_table_chart_column,
+    {
+      
+      columns <- table_modal_columns()
+      
+      #
+      # First capture the current inputs before the
+      # modal UI is rebuilt.
+      #
+      for (
+        column_number in
+        seq_along(columns)
+      ) {
+        
+        columns[[
+          column_number
+        ]] <- list(
+          heading = input[[
+            paste0(
+              "table_chart_column_",
+              column_number,
+              "_heading"
+            )
+          ]] %||% "",
+          
+          source = input[[
+            paste0(
+              "table_chart_column_",
+              column_number,
+              "_source"
+            )
+          ]] %||% "",
+          
+          format = input[[
+            paste0(
+              "table_chart_column_",
+              column_number,
+              "_format"
+            )
+          ]] %||% "string"
+        )
+      }
+      
+      columns[[
+        length(columns) + 1
+      ]] <- list(
+        heading = "",
+        source = "",
+        format = "string"
+      )
+      
+      table_modal_columns(
+        columns
+      )
+    },
+    ignoreInit = TRUE
+  )
+  
+  ### Remove table columns ####
+  
+  lapply(
+    seq_len(12),
+    function(column_number) {
+      
+      local({
+        
+        current_column <-
+          column_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "remove_table_chart_column_",
+              current_column
+            )
+          ]],
+          {
+            
+            columns <-
+              table_modal_columns()
+            
+            if (
+              length(columns) <= 1 ||
+              current_column >
+              length(columns)
+            ) {
+              return()
+            }
+            
+            #
+            # Capture all current values first.
+            #
+            for (
+              i in
+              seq_along(columns)
+            ) {
+              
+              columns[[i]] <- list(
+                heading = input[[
+                  paste0(
+                    "table_chart_column_",
+                    i,
+                    "_heading"
+                  )
+                ]] %||% "",
+                
+                source = input[[
+                  paste0(
+                    "table_chart_column_",
+                    i,
+                    "_source"
+                  )
+                ]] %||% "",
+                
+                format = input[[
+                  paste0(
+                    "table_chart_column_",
+                    i,
+                    "_format"
+                  )
+                ]] %||% "string"
+              )
+            }
+            
+            columns <-
+              columns[-current_column]
+            
+            table_modal_columns(
+              columns
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
+  
+  ### Finish table configuration ####
+  
+  observeEvent(
+    input$finish_table_chart_configuration,
+    {
+      
+      chart_number <-
+        active_table_chart()
+      
+      modal_data <-
+        table_chart_data()
+      
+      req(chart_number)
+      req(modal_data)
+      
+      calculation_data <-
+        modal_data$calculation_data
+      
+      columns <-
+        table_modal_columns()
+      
+      if (length(columns) == 0) {
+        showNotification(
+          "Configure at least one table column.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      configured_columns <- list()
+      
+      for (
+        column_number in
+        seq_along(columns)
+      ) {
+        
+        heading <- input[[
+          paste0(
+            "table_chart_column_",
+            column_number,
+            "_heading"
+          )
+        ]]
+        
+        source <- input[[
+          paste0(
+            "table_chart_column_",
+            column_number,
+            "_source"
+          )
+        ]]
+        
+        format <- input[[
+          paste0(
+            "table_chart_column_",
+            column_number,
+            "_format"
+          )
+        ]]
+        
+        if (
+          is.null(heading) ||
+          !nzchar(trimws(heading))
+        ) {
+          showNotification(
+            paste(
+              "Enter a heading for column",
+              column_number
+            ),
+            type = "error"
+          )
+          
+          return()
+        }
+        
+        if (
+          is.null(source) ||
+          !nzchar(source)
+        ) {
+          showNotification(
+            paste(
+              "Choose a source for column",
+              column_number
+            ),
+            type = "error"
+          )
+          
+          return()
+        }
+        
+        if (
+          is.null(format) ||
+          !format %in% c(
+            "string",
+            "number",
+            "change",
+            "change_percent"
+          )
+        ) {
+          format <- "string"
+        }
+        
+        configured_columns[[
+          column_number
+        ]] <- list(
+          heading =
+            trimws(heading),
+          source =
+            source,
+          format =
+            format
+        )
+      }
+      
+      #
+      # Prevent duplicate displayed headings because
+      # object keys in table_data must be unique.
+      #
+      headings <- vapply(
+        configured_columns,
+        function(column) {
+          column$heading
+        },
+        character(1)
+      )
+      
+      if (anyDuplicated(headings)) {
+        showNotification(
+          "Table column headings must be unique.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      selected_filters <- list()
+      
+      for (
+        filter_definition in
+        calculation_data$row_filters
+      ) {
+        
+        input_id <- paste0(
+          "table_chart_filter_",
+          filter_definition$input_id
+        )
+        
+        selected_values <-
+          input[[
+            input_id
+          ]]
+        
+        if (
+          !is.null(selected_values) &&
+          length(selected_values) > 0
+        ) {
+          selected_filters[[
+            filter_definition$column
+          ]] <- as.character(
+            selected_values
+          )
+        }
+      }
+      
+      page_table_settings[[
+        as.character(chart_number)
+      ]] <- list(
+        configured = TRUE,
+        matrix =
+          calculation_data$matrix,
+        pivot_label =
+          calculation_data$pivot_label,
+        filters =
+          selected_filters,
+        columns =
+          configured_columns
+      )
+      
+      table_modal_columns(
+        configured_columns
+      )
+      
+      summary_text <- paste0(
+        length(configured_columns),
+        if (
+          length(configured_columns) == 1
+        ) {
+          " column configured"
+        } else {
+          " columns configured"
+        }
+      )
+      
+      summary_input_id <- paste0(
+        "page_chart_",
+        chart_number,
+        "_table_data_summary"
       )
       
       shinyjs::runjs(
