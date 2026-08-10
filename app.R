@@ -4077,6 +4077,12 @@ server <- function(input, output, session) {
   
   pie_chart_data <- reactiveVal(NULL)
   
+  page_treemap_chart_settings <- reactiveValues()
+  
+  active_treemap_chart <- reactiveVal(NULL)
+  
+  treemap_chart_data <- reactiveVal(NULL)
+  
   line_chart_modal_lines <- reactiveVal(
     list()
   )
@@ -7656,6 +7662,98 @@ server <- function(input, output, session) {
             )
           }
           
+          #
+          # TREEMAP
+          #
+          
+          if (identical(chart_type, "treemap")) {
+            
+            existing_settings <- page_treemap_chart_settings[[
+              as.character(current_chart)
+            ]]
+            
+            data_summary <- if (
+              !is.null(existing_settings) &&
+              isTRUE(existing_settings$configured)
+            ) {
+              
+              category_count <- length(
+                existing_settings$category_values
+              )
+              
+              if (category_count > 0) {
+                paste0(
+                  category_count,
+                  if (category_count == 1) {
+                    " category configured"
+                  } else {
+                    " categories configured"
+                  }
+                )
+              } else {
+                "Treemap data configured"
+              }
+              
+            } else {
+              ""
+            }
+            
+            return(
+              tagList(
+                
+                tags$hr(),
+                
+                h4("Treemap options"),
+                
+                tags$div(
+                  class = "form-group",
+                  
+                  tags$label("Treemap data"),
+                  
+                  tags$div(
+                    class = "input-group",
+                    
+                    tags$input(
+                      id = paste0(
+                        "page_chart_",
+                        current_chart,
+                        "_treemap_data_summary"
+                      ),
+                      type = "text",
+                      class = "form-control",
+                      value = data_summary,
+                      readonly = "readonly",
+                      placeholder = "No treemap data configured"
+                    ),
+                    
+                    tags$span(
+                      class = "input-group-btn",
+                      
+                      actionButton(
+                        inputId = paste0(
+                          "configure_page_chart_treemap_",
+                          current_chart
+                        ),
+                        label = "Configure",
+                        icon = icon("sliders"),
+                        class = "btn-default"
+                      )
+                    )
+                  )
+                ),
+                
+                tags$p(
+                  class = "help-block",
+                  paste(
+                    "Choose the category variable used for the rectangles,",
+                    "the values to include, and the numeric value used",
+                    "to size each rectangle."
+                  )
+                )
+              )
+            )
+          }
+          
           NULL
         })
         
@@ -8447,6 +8545,701 @@ server <- function(input, output, session) {
         "page_chart_",
         chart_number,
         "_pie_data_summary"
+      )
+      
+      shinyjs::runjs(
+        sprintf(
+          "$('#%s').val(%s);",
+          summary_input_id,
+          jsonlite::toJSON(
+            summary_text,
+            auto_unbox = TRUE
+          )
+        )
+      )
+      
+      removeModal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  ### Connect the configure treemap buttons ####
+  
+  lapply(
+    seq_len(3),
+    function(chart_number) {
+      
+      local({
+        
+        current_chart <- chart_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "configure_page_chart_treemap_",
+              current_chart
+            )
+          ]],
+          {
+            
+            req(folder())
+            req(selected_page_design())
+            
+            matrix <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_matrix"
+              )
+            ]]
+            
+            req(matrix)
+            req(nzchar(matrix))
+            
+            chart_type <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_type"
+              )
+            ]]
+            
+            req(
+              identical(
+                chart_type,
+                "treemap"
+              )
+            )
+            
+            calculation_data <- tryCatch(
+              read_card_calculation_data(
+                project_root = folder(),
+                matrix = matrix
+              ),
+              error = function(error) {
+                
+                showNotification(
+                  paste(
+                    "The treemap data could not be loaded:",
+                    conditionMessage(error)
+                  ),
+                  type = "error",
+                  duration = NULL
+                )
+                
+                NULL
+              }
+            )
+            
+            req(calculation_data)
+            
+            existing_settings <-
+              page_treemap_chart_settings[[
+                as.character(
+                  current_chart
+                )
+              ]]
+            
+            if (
+              !is.null(existing_settings) &&
+              !identical(
+                existing_settings$matrix,
+                matrix
+              )
+            ) {
+              existing_settings <- NULL
+            }
+            
+            active_treemap_chart(
+              current_chart
+            )
+            
+            treemap_chart_data(
+              list(
+                calculation_data =
+                  calculation_data,
+                existing_settings =
+                  existing_settings
+              )
+            )
+            
+            showModal(
+              modalDialog(
+                title = paste(
+                  "Configure treemap data for chart",
+                  current_chart
+                ),
+                
+                tags$p(
+                  paste(
+                    "Choose the category variable and values",
+                    "that should appear in the treemap."
+                  )
+                ),
+                
+                uiOutput(
+                  "treemap_chart_configuration_ui"
+                ),
+                
+                footer = tagList(
+                  modalButton(
+                    "Cancel"
+                  ),
+                  
+                  actionButton(
+                    inputId =
+                      "finish_treemap_chart_configuration",
+                    label = "Done",
+                    class = "btn-primary"
+                  )
+                ),
+                
+                size = "l",
+                easyClose = FALSE
+              )
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
+  
+  ### Connect the configure treemap buttons ####
+  
+  lapply(
+    seq_len(3),
+    function(chart_number) {
+      
+      local({
+        
+        current_chart <- chart_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "configure_page_chart_treemap_",
+              current_chart
+            )
+          ]],
+          {
+            
+            req(folder())
+            req(selected_page_design())
+            
+            matrix <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_matrix"
+              )
+            ]]
+            
+            req(matrix)
+            req(nzchar(matrix))
+            
+            chart_type <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_type"
+              )
+            ]]
+            
+            req(
+              identical(
+                chart_type,
+                "treemap"
+              )
+            )
+            
+            calculation_data <- tryCatch(
+              read_card_calculation_data(
+                project_root = folder(),
+                matrix = matrix
+              ),
+              error = function(error) {
+                
+                showNotification(
+                  paste(
+                    "The treemap data could not be loaded:",
+                    conditionMessage(error)
+                  ),
+                  type = "error",
+                  duration = NULL
+                )
+                
+                NULL
+              }
+            )
+            
+            req(calculation_data)
+            
+            existing_settings <-
+              page_treemap_chart_settings[[
+                as.character(
+                  current_chart
+                )
+              ]]
+            
+            if (
+              !is.null(existing_settings) &&
+              !identical(
+                existing_settings$matrix,
+                matrix
+              )
+            ) {
+              existing_settings <- NULL
+            }
+            
+            active_treemap_chart(
+              current_chart
+            )
+            
+            treemap_chart_data(
+              list(
+                calculation_data =
+                  calculation_data,
+                existing_settings =
+                  existing_settings
+              )
+            )
+            
+            showModal(
+              modalDialog(
+                title = paste(
+                  "Configure treemap data for chart",
+                  current_chart
+                ),
+                
+                tags$p(
+                  paste(
+                    "Choose the category variable and values",
+                    "that should appear in the treemap."
+                  )
+                ),
+                
+                uiOutput(
+                  "treemap_chart_configuration_ui"
+                ),
+                
+                footer = tagList(
+                  modalButton(
+                    "Cancel"
+                  ),
+                  
+                  actionButton(
+                    inputId =
+                      "finish_treemap_chart_configuration",
+                    label = "Done",
+                    class = "btn-primary"
+                  )
+                ),
+                
+                size = "l",
+                easyClose = FALSE
+              )
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
+  
+  ### Render treemap configuration modal ####
+  
+  output$treemap_chart_configuration_ui <- renderUI({
+    
+    modal_data <- treemap_chart_data()
+    
+    req(modal_data)
+    
+    calculation_data <-
+      modal_data$calculation_data
+    
+    existing_settings <-
+      modal_data$existing_settings
+    
+    row_filters <-
+      calculation_data$row_filters
+    
+    row_variable_names <- vapply(
+      row_filters,
+      function(filter_definition) {
+        filter_definition$column
+      },
+      character(1)
+    )
+    
+    existing_category <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$categories) &&
+      existing_settings$categories %in%
+      row_variable_names
+    ) {
+      existing_settings$categories
+    } else {
+      ""
+    }
+    
+    selected_category <-
+      input$treemap_chart_categories
+    
+    if (
+      is.null(selected_category) ||
+      !selected_category %in%
+      row_variable_names
+    ) {
+      selected_category <-
+        existing_category
+    }
+    
+    category_definition <- NULL
+    
+    if (nzchar(selected_category)) {
+      
+      matching_category <- Filter(
+        function(filter_definition) {
+          identical(
+            filter_definition$column,
+            selected_category
+          )
+        },
+        row_filters
+      )
+      
+      if (length(matching_category) == 1) {
+        category_definition <-
+          matching_category[[1]]
+      }
+    }
+    
+    category_value_choices <- if (
+      !is.null(category_definition)
+    ) {
+      category_definition$choices
+    } else {
+      character()
+    }
+    
+    existing_category_values <- if (
+      !is.null(existing_settings) &&
+      !is.null(
+        existing_settings$category_values
+      )
+    ) {
+      existing_settings$category_values
+    } else {
+      character()
+    }
+    
+    existing_value <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$value)
+    ) {
+      existing_settings$value
+    } else {
+      ""
+    }
+    
+    ordinary_filters <- Filter(
+      function(filter_definition) {
+        
+        if (
+          nzchar(selected_category) &&
+          identical(
+            filter_definition$column,
+            selected_category
+          )
+        ) {
+          return(FALSE)
+        }
+        
+        TRUE
+      },
+      row_filters
+    )
+    
+    filter_inputs <- lapply(
+      ordinary_filters,
+      function(filter_definition) {
+        
+        existing_filter_values <- character()
+        
+        if (
+          !is.null(existing_settings) &&
+          !is.null(existing_settings$filters) &&
+          !is.null(
+            existing_settings$filters[[
+              filter_definition$column
+            ]]
+          )
+        ) {
+          existing_filter_values <-
+            existing_settings$filters[[
+              filter_definition$column
+            ]]
+        }
+        
+        selectizeInput(
+          inputId = paste0(
+            "treemap_chart_filter_",
+            filter_definition$input_id
+          ),
+          label =
+            filter_definition$label,
+          choices =
+            filter_definition$choices,
+          selected =
+            existing_filter_values,
+          multiple = TRUE,
+          options = list(
+            plugins = list(
+              "remove_button"
+            ),
+            placeholder = "No filter"
+          ),
+          width = "100%"
+        )
+      }
+    )
+    
+    tagList(
+      
+      h4("Categories"),
+      
+      selectInput(
+        inputId =
+          "treemap_chart_categories",
+        label =
+          "Category variable",
+        choices = c(
+          "Select a variable" = "",
+          stats::setNames(
+            row_variable_names,
+            row_variable_names
+          )
+        ),
+        selected =
+          selected_category,
+        width = "100%"
+      ),
+      
+      if (nzchar(selected_category)) {
+        
+        selectizeInput(
+          inputId =
+            "treemap_chart_category_values",
+          label = paste0(
+            selected_category,
+            " values"
+          ),
+          choices =
+            category_value_choices,
+          selected =
+            existing_category_values,
+          multiple = TRUE,
+          options = list(
+            plugins = list(
+              "remove_button"
+            ),
+            placeholder = "All values"
+          ),
+          width = "100%"
+        )
+      },
+      
+      tags$hr(),
+      
+      h4("Value"),
+      
+      tags$p(
+        class = "help-block",
+        paste(
+          "Choose the numeric value used to determine",
+          "the size of each treemap rectangle."
+        )
+      ),
+      
+      selectInput(
+        inputId =
+          "treemap_chart_value",
+        label =
+          calculation_data$pivot_label,
+        choices = c(
+          "Select a value" = "",
+          calculation_data$pivot_columns
+        ),
+        selected =
+          existing_value,
+        width = "100%"
+      ),
+      
+      tags$hr(),
+      
+      h4("Additional filters"),
+      
+      tags$p(
+        class = "help-block",
+        paste(
+          "Leave a filter blank to include all values.",
+          "Dynamic year options can be used where available."
+        )
+      ),
+      
+      if (length(filter_inputs) > 0) {
+        tagList(
+          filter_inputs
+        )
+      } else {
+        tags$em(
+          "No additional filters are available."
+        )
+      }
+    )
+  })
+  
+  ### Finish treemap configuration ####
+  
+  observeEvent(
+    input$finish_treemap_chart_configuration,
+    {
+      
+      chart_number <-
+        active_treemap_chart()
+      
+      modal_data <-
+        treemap_chart_data()
+      
+      req(chart_number)
+      req(modal_data)
+      
+      calculation_data <-
+        modal_data$calculation_data
+      
+      categories <-
+        input$treemap_chart_categories
+      
+      if (
+        is.null(categories) ||
+        !nzchar(categories)
+      ) {
+        showNotification(
+          "Choose a category variable.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      value <-
+        input$treemap_chart_value
+      
+      if (
+        is.null(value) ||
+        !nzchar(value)
+      ) {
+        showNotification(
+          "Choose a value column.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      category_values <-
+        input$treemap_chart_category_values
+      
+      if (is.null(category_values)) {
+        category_values <-
+          character()
+      }
+      
+      selected_filters <- list()
+      
+      for (
+        filter_definition in
+        calculation_data$row_filters
+      ) {
+        
+        column_name <-
+          filter_definition$column
+        
+        if (
+          identical(
+            column_name,
+            categories
+          )
+        ) {
+          next
+        }
+        
+        input_id <- paste0(
+          "treemap_chart_filter_",
+          filter_definition$input_id
+        )
+        
+        selected_values <-
+          input[[
+            input_id
+          ]]
+        
+        if (
+          !is.null(selected_values) &&
+          length(selected_values) > 0
+        ) {
+          selected_filters[[
+            column_name
+          ]] <- as.character(
+            selected_values
+          )
+        }
+      }
+      
+      page_treemap_chart_settings[[
+        as.character(
+          chart_number
+        )
+      ]] <- list(
+        configured = TRUE,
+        matrix =
+          calculation_data$matrix,
+        pivot_label =
+          calculation_data$pivot_label,
+        categories =
+          categories,
+        category_values =
+          as.character(
+            category_values
+          ),
+        value =
+          value,
+        filters =
+          selected_filters
+      )
+      
+      summary_text <- if (
+        length(category_values) > 0
+      ) {
+        paste0(
+          length(category_values),
+          if (
+            length(category_values) == 1
+          ) {
+            " category configured"
+          } else {
+            " categories configured"
+          }
+        )
+      } else {
+        "Treemap data configured"
+      }
+      
+      summary_input_id <- paste0(
+        "page_chart_",
+        chart_number,
+        "_treemap_data_summary"
       )
       
       shinyjs::runjs(
