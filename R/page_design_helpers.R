@@ -62,7 +62,7 @@ read_page_strapline <- function(
   )
   
   start_line <- grep(
-    'class=["\'][^"\']*\\bcurrent-page\\b',
+    'class=["\'][^"\']*\\bcurrent-page-strapline\\b',
     lines,
     perl = TRUE
   )
@@ -150,14 +150,14 @@ update_page_strapline <- function(
   )
   
   start_line <- grep(
-    'class=["\'][^"\']*\\bcurrent-page\\b',
+    'class=["\'][^"\']*\\bcurrent-page-strapline\\b',
     lines,
     perl = TRUE
   )
   
   if (length(start_line) != 1) {
     stop(
-      "Could not uniquely identify the .current-page element."
+      "Could not uniquely identify the .current-page-strapline element."
     )
   }
   
@@ -2488,7 +2488,7 @@ clear_page_design_files <- function(
   
   # Clear the page strapline.
   current_page <- grep(
-    'class=["\'][^"\']*\\bcurrent-page\\b',
+    'class=["\'][^"\']*\\bcurrent-page-strapline\\b',
     updated_html,
     perl = TRUE
   )

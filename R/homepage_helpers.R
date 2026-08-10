@@ -125,16 +125,16 @@ clear_homepage_files <- function(project_root) {
     )
   }
   
-  # Clear .current-page
+  # Clear .current-page-strapline
   current_page_line <- grep(
-    'class=["\'][^"\']*\\bcurrent-page\\b',
+    'class=["\'][^"\']*\\bcurrent-page-strapline\\b',
     updated_html,
     perl = TRUE
   )
   
   if (length(current_page_line) != 1) {
     stop(
-      "Could not uniquely identify the .current-page element."
+      "Could not uniquely identify the .current-page-strapline element."
     )
   }
   
@@ -367,14 +367,14 @@ update_homepage_strapline <- function(
   )
   
   current_page_line <- grep(
-    'class=["\'][^"\']*current-page[^"\']*["\']',
+    'class=["\'][^"\']*current-page-strapline[^"\']*["\']',
     html_lines,
     perl = TRUE
   )
   
   if (length(current_page_line) != 1) {
     stop(
-      "Could not uniquely identify the .current-page element."
+      "Could not uniquely identify the .current-page-strapline element."
     )
   }
   
@@ -422,7 +422,7 @@ update_homepage_strapline <- function(
     }
     
     stop(
-      "Could not find the closing </div> for .current-page."
+      "Could not find the closing </div> for .current-page-strapline."
     )
   }
   
@@ -1354,7 +1354,7 @@ read_homepage_strapline <- function(project_root) {
   )
   
   start_line <- grep(
-    'class=["\'][^"\']*\\bcurrent-page\\b',
+    'class=["\'][^"\']*\\bcurrent-page-strapline\\b',
     html_lines,
     perl = TRUE
   )
