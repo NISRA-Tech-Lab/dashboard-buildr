@@ -11809,38 +11809,6 @@ server <- function(input, output, session) {
         )
       },
       
-      if (nzchar(selected_area)) {
-        
-        selectizeInput(
-          inputId =
-            "map_chart_area_values",
-          label = paste0(
-            selected_area,
-            " values"
-          ),
-          choices =
-            area_value_choices,
-          selected =
-            existing_area_values,
-          multiple = TRUE,
-          options = list(
-            plugins = list(
-              "remove_button"
-            ),
-            placeholder = "All areas"
-          ),
-          width = "100%"
-        )
-      },
-      
-      tags$p(
-        class = "help-block",
-        paste(
-          "Leave area values blank to include every",
-          "available mapped area."
-        )
-      ),
-      
       tags$hr(),
       
       h4("Value"),
@@ -11928,13 +11896,6 @@ server <- function(input, output, session) {
         return()
       }
       
-      area_values <-
-        input$map_chart_area_values
-      
-      if (is.null(area_values)) {
-        area_values <- character()
-      }
-      
       selected_filters <- list()
       
       for (
@@ -11982,10 +11943,6 @@ server <- function(input, output, session) {
           calculation_data$pivot_label,
         area =
           area,
-        area_values =
-          as.character(
-            area_values
-          ),
         value =
           value,
         filters =

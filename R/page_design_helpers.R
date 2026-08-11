@@ -8003,23 +8003,16 @@ build_page_map_chart_js <- function(
   }
   
   #
-  # Optional restriction to selected geographic areas.
+  # Exclude the Northern Ireland summary row.
   #
-  if (
-    !is.null(settings$area_values) &&
-    length(settings$area_values) > 0
-  ) {
-    
-    filter_conditions <- c(
-      filter_conditions,
-      build_chart_filter_condition(
-        column_name =
-          settings$area,
-        selected_values =
-          settings$area_values
-      )
+  filter_conditions <- c(
+    filter_conditions,
+    paste0(
+      'row[',
+      javascript_string(settings$area),
+      '] != "Northern Ireland"'
     )
-  }
+  )
   
   data_block <- if (
     length(filter_conditions) > 0
@@ -8147,49 +8140,6 @@ build_page_map_chart_js <- function(
         )
       )
     }
-  }
-  
-  #
-  # Geographic restrictions are included in the query
-  # only when the user explicitly selected area values.
-  #
-  if (
-    !is.null(settings$area_values) &&
-    length(settings$area_values) > 0
-  ) {
-    
-    area_query_value <- if (
-      length(settings$area_values) == 1
-    ) {
-      javascript_string(
-        settings$area_values[[1]]
-      )
-    } else {
-      paste0(
-        "[",
-        paste(
-          vapply(
-            settings$area_values,
-            javascript_string,
-            character(1)
-          ),
-          collapse = ", "
-        ),
-        "]"
-      )
-    }
-    
-    query_entries <- c(
-      query_entries,
-      paste0(
-        "        ",
-        javascript_string(
-          settings$area
-        ),
-        ": ",
-        area_query_value
-      )
-    )
   }
   
   #
