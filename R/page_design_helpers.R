@@ -6888,6 +6888,11 @@ build_page_pyramid_chart_js <- function(
       ","
     ),
     paste0(
+      "        meta: ",
+      matrix,
+      "_meta,"
+    ),
+    paste0(
       "        categories: ",
       javascript_string(
         settings$categories

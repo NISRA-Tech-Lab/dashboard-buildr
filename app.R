@@ -9785,7 +9785,10 @@ server <- function(input, output, session) {
     )
     
     #
-    # Find the Year filter definition.
+    # Identify the year column.
+    #
+    # Prefer a row-filter definition marked as a year variable,
+    # but fall back to any data column whose name contains "year".
     #
     year_definitions <- Filter(
       function(filter_definition) {
@@ -9794,33 +9797,117 @@ server <- function(input, output, session) {
       row_filters
     )
     
-    year_definition <- if (
-      length(year_definitions) > 0
-    ) {
-      year_definitions[[1]]
+    if (length(year_definitions) > 0) {
+      
+      year_column <-
+        year_definitions[[1]]$column
+      
     } else {
-      NULL
+      
+      data_columns <- names(
+        calculation_data$data
+      )
+      
+      year_candidates <- data_columns[
+        grepl(
+          "year",
+          data_columns,
+          ignore.case = TRUE
+        )
+      ]
+      
+      year_column <- if (
+        length(year_candidates) > 0
+      ) {
+        year_candidates[[1]]
+      } else {
+        ""
+      }
     }
     
-    year_column <- if (
-      !is.null(year_definition)
+    #
+    # Read the actual year values directly from the data.
+    #
+    year_values <- if (
+      nzchar(year_column) &&
+      year_column %in% names(calculation_data$data)
     ) {
-      year_definition$column
-    } else {
-      "Year"
-    }
-    
-    year_choices <- if (
-      !is.null(year_definition)
-    ) {
-      year_definition$choices
+      
+      unique(
+        as.character(
+          calculation_data$data[[
+            year_column
+          ]]
+        )
+      )
+      
     } else {
       character()
     }
     
+    year_values <- year_values[
+      !is.na(year_values) &
+        nzchar(year_values)
+    ]
+    
+    #
+    # Sort numeric years correctly.
+    #
+    numeric_years <- suppressWarnings(
+      as.numeric(year_values)
+    )
+    
+    if (
+      length(year_values) > 0 &&
+      all(!is.na(numeric_years))
+    ) {
+      year_values <- year_values[
+        order(numeric_years)
+      ]
+    }
+    
+    #
+    # Build dropdown choices.
+    #
+    # Even for a single-year dataset, offer:
+    #
+    #   Latest year
+    #   2021
+    #
+    if (length(year_values) == 1) {
+      
+      year_choices <- c(
+        "Latest year" = "__LATEST_YEAR__",
+        stats::setNames(
+          year_values,
+          year_values
+        )
+      )
+      
+    } else if (length(year_values) > 1) {
+      
+      year_choices <- c(
+        "Latest year" = "__LATEST_YEAR__",
+        "Previous year" = "__LAST_YEAR__",
+        "Earliest year" = "__FIRST_YEAR__",
+        stats::setNames(
+          year_values,
+          year_values
+        )
+      )
+      
+    } else {
+      
+      year_choices <- c(
+        "Latest year" = "__LATEST_YEAR__"
+      )
+    }
+    
     existing_year <- if (
       !is.null(existing_settings) &&
-      !is.null(existing_settings$year)
+      !is.null(existing_settings$year) &&
+      existing_settings$year %in%
+      unname(year_choices)
     ) {
       existing_settings$year
     } else {
