@@ -1410,6 +1410,20 @@ update_page_card_value_js <- function(
   }
   
   #
+  # Move ownership of updateYearSpans() with the matrix load.
+  #
+  # If this card is becoming the first owner of the matrix,
+  # remove any existing call further down the script, such
+  # as one previously written inside a chart block.
+  #
+  if (!matrix_loaded_earlier) {
+    js_lines <- remove_matrix_update_year_spans(
+      lines = js_lines,
+      matrix = matrix
+    )
+  }
+  
+  #
   # Recalculate every marker because removing readData lines
   # may have changed line numbers.
   #
