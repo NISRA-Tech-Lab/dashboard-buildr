@@ -4720,6 +4720,7 @@ update_page_line_chart_js <- function(
     project_root,
     page_href,
     chart_number,
+    matrix,
     line_chart_js
 ) {
   
@@ -4800,6 +4801,28 @@ update_page_line_chart_js <- function(
     )
   }
   
+  needs_update_year_spans <- !page_js_has_update_year_spans_before(
+    js_lines = js_lines,
+    line_number = chart_marker
+  )
+  
+  year_update_lines <- if (
+    isTRUE(needs_update_year_spans)
+  ) {
+    c(
+      paste0(
+        "    updateYearSpans(",
+        matrix,
+        "_data, ",
+        matrix,
+        "_meta);"
+      ),
+      ""
+    )
+  } else {
+    character()
+  }
+  
   all_chart_markers <- grep(
     "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
     js_lines
@@ -4832,6 +4855,7 @@ update_page_line_chart_js <- function(
     section,
     "",
     "    // BuildR line chart config start",
+    year_update_lines,
     line_chart_js,
     "    // BuildR line chart config end",
     "",
@@ -5428,8 +5452,10 @@ update_page_bar_chart_js <- function(
     project_root,
     page_href,
     chart_number,
+    matrix,
     bar_chart_js
 ) {
+  
   paths <- page_design_paths(
     project_root,
     page_href
@@ -5451,6 +5477,16 @@ update_page_bar_chart_js <- function(
     js_lines
   )
   
+  if (
+    length(region_start) != 1 ||
+    length(region_end) != 1 ||
+    region_end <= region_start
+  ) {
+    stop(
+      "Could not uniquely identify the chart JavaScript region."
+    )
+  }
+  
   chart_marker <- grep(
     paste0(
       "^\\s*//\\s*Content for chart\\s+",
@@ -5464,6 +5500,38 @@ update_page_bar_chart_js <- function(
     chart_marker > region_start &
       chart_marker < region_end
   ]
+  
+  if (length(chart_marker) != 1) {
+    stop(
+      paste0(
+        "Could not identify the JavaScript section for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  needs_update_year_spans <- !page_js_has_update_year_spans_before(
+    js_lines = js_lines,
+    line_number = chart_marker
+  )
+  
+  year_update_lines <- if (
+    isTRUE(needs_update_year_spans)
+  ) {
+    c(
+      paste0(
+        "    updateYearSpans(",
+        matrix,
+        "_data, ",
+        matrix,
+        "_meta);"
+      ),
+      ""
+    )
+  } else {
+    character()
+  }
   
   all_chart_markers <- grep(
     "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
@@ -5499,6 +5567,7 @@ update_page_bar_chart_js <- function(
     section,
     "",
     "    // BuildR bar chart config start",
+    year_update_lines,
     bar_chart_js,
     "    // BuildR bar chart config end",
     "",
@@ -5506,18 +5575,28 @@ update_page_bar_chart_js <- function(
   )
   
   updated_js <- c(
-    js_lines[
-      seq_len(
-        chart_marker - 1
-      )
-    ],
+    if (chart_marker > 1) {
+      js_lines[
+        seq_len(
+          chart_marker - 1
+        )
+      ]
+    } else {
+      character()
+    },
+    
     replacement_section,
-    js_lines[
-      seq.int(
-        section_end + 1,
-        length(js_lines)
-      )
-    ]
+    
+    if (section_end < length(js_lines)) {
+      js_lines[
+        seq.int(
+          section_end + 1,
+          length(js_lines)
+        )
+      ]
+    } else {
+      character()
+    }
   )
   
   writeLines(
@@ -5861,6 +5940,7 @@ update_page_pie_chart_js <- function(
     project_root,
     page_href,
     chart_number,
+    matrix,
     pie_chart_js
 ) {
   
@@ -5928,6 +6008,28 @@ update_page_pie_chart_js <- function(
     )
   }
   
+  needs_update_year_spans <- !page_js_has_update_year_spans_before(
+    js_lines = js_lines,
+    line_number = chart_marker
+  )
+  
+  year_update_lines <- if (
+    isTRUE(needs_update_year_spans)
+  ) {
+    c(
+      paste0(
+        "    updateYearSpans(",
+        matrix,
+        "_data, ",
+        matrix,
+        "_meta);"
+      ),
+      ""
+    )
+  } else {
+    character()
+  }
+  
   all_chart_markers <- grep(
     "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
     js_lines
@@ -5962,6 +6064,7 @@ update_page_pie_chart_js <- function(
     section,
     "",
     "    // BuildR pie chart config start",
+    year_update_lines,
     pie_chart_js,
     "    // BuildR pie chart config end",
     "",
@@ -6187,9 +6290,52 @@ update_page_chart_canvas_html <- function(
   )
 }
 
-remove_page_chart_config_blocks <- function(
-    section
+remove_marked_block <- function(
+    lines,
+    start_pattern,
+    end_pattern
 ) {
+  
+  repeat {
+    
+    start <- grep(
+      start_pattern,
+      lines
+    )
+    
+    if (length(start) == 0) {
+      break
+    }
+    
+    start <- start[[1]]
+    
+    end <- grep(
+      end_pattern,
+      lines
+    )
+    
+    end <- end[
+      end > start
+    ]
+    
+    if (length(end) == 0) {
+      break
+    }
+    
+    end <- end[[1]]
+    
+    lines <- lines[
+      -seq.int(
+        start,
+        end
+      )
+    ]
+  }
+  
+  lines
+}
+
+remove_page_chart_config_blocks <- function(lines) {
   
   chart_types <- c(
     "line",
@@ -6203,95 +6349,28 @@ remove_page_chart_config_blocks <- function(
   
   for (chart_type in chart_types) {
     
-    start_pattern <- paste0(
-      "^\\s*//\\s*BuildR ",
-      chart_type,
-      " chart config start\\s*$"
-    )
-    
-    end_pattern <- paste0(
-      "^\\s*//\\s*BuildR ",
-      chart_type,
-      " chart config end\\s*$"
-    )
-    
-    repeat {
-      
-      config_start <- grep(
-        start_pattern,
-        section
+    lines <- remove_marked_block(
+      lines,
+      paste0(
+        "^\\s*//\\s*BuildR ",
+        chart_type,
+        " chart config start\\s*$"
+      ),
+      paste0(
+        "^\\s*//\\s*BuildR ",
+        chart_type,
+        " chart config end\\s*$"
       )
-      
-      config_end <- grep(
-        end_pattern,
-        section
-      )
-      
-      if (
-        length(config_start) == 0 &&
-        length(config_end) == 0
-      ) {
-        break
-      }
-      
-      if (
-        length(config_start) == 0 ||
-        length(config_end) == 0
-      ) {
-        stop(
-          paste0(
-            "Could not safely identify an existing ",
-            chart_type,
-            " chart configuration."
-          )
-        )
-      }
-      
-      current_start <- config_start[[1]]
-      
-      later_ends <- config_end[
-        config_end > current_start
-      ]
-      
-      if (length(later_ends) == 0) {
-        stop(
-          paste0(
-            "Could not safely identify the end of an existing ",
-            chart_type,
-            " chart configuration."
-          )
-        )
-      }
-      
-      current_end <- later_ends[[1]]
-      
-      section <- section[
-        -seq.int(
-          current_start,
-          current_end
-        )
-      ]
-    }
-  }
-  
-  while (
-    length(section) > 0 &&
-    !nzchar(
-      trimws(
-        tail(
-          section,
-          1
-        )
-      )
-    )
-  ) {
-    section <- head(
-      section,
-      -1
     )
   }
   
-  section
+  lines <- remove_marked_block(
+    lines,
+    "^\\s*//\\s*BuildR placeholder chart start\\s*$",
+    "^\\s*//\\s*BuildR placeholder chart end\\s*$"
+  )
+  
+  lines
 }
 
 build_page_treemap_chart_js <- function(
@@ -6625,6 +6704,7 @@ update_page_treemap_chart_js <- function(
     project_root,
     page_href,
     chart_number,
+    matrix,
     treemap_chart_js
 ) {
   
@@ -6649,6 +6729,16 @@ update_page_treemap_chart_js <- function(
     js_lines
   )
   
+  if (
+    length(region_start) != 1 ||
+    length(region_end) != 1 ||
+    region_end <= region_start
+  ) {
+    stop(
+      "Could not uniquely identify the chart JavaScript region."
+    )
+  }
+  
   chart_marker <- grep(
     paste0(
       "^\\s*//\\s*Content for chart\\s+",
@@ -6671,6 +6761,28 @@ update_page_treemap_chart_js <- function(
         "."
       )
     )
+  }
+  
+  needs_update_year_spans <- !page_js_has_update_year_spans_before(
+    js_lines = js_lines,
+    line_number = chart_marker
+  )
+  
+  year_update_lines <- if (
+    isTRUE(needs_update_year_spans)
+  ) {
+    c(
+      paste0(
+        "    updateYearSpans(",
+        matrix,
+        "_data, ",
+        matrix,
+        "_meta);"
+      ),
+      ""
+    )
+  } else {
+    character()
   }
   
   all_chart_markers <- grep(
@@ -6711,6 +6823,7 @@ update_page_treemap_chart_js <- function(
     section,
     "",
     "    // BuildR treemap chart config start",
+    year_update_lines,
     treemap_chart_js,
     "    // BuildR treemap chart config end",
     "",
@@ -7115,6 +7228,7 @@ update_page_pyramid_chart_js <- function(
     project_root,
     page_href,
     chart_number,
+    matrix,
     pyramid_chart_js
 ) {
   
@@ -7139,6 +7253,16 @@ update_page_pyramid_chart_js <- function(
     js_lines
   )
   
+  if (
+    length(region_start) != 1 ||
+    length(region_end) != 1 ||
+    region_end <= region_start
+  ) {
+    stop(
+      "Could not uniquely identify the chart JavaScript region."
+    )
+  }
+  
   chart_marker <- grep(
     paste0(
       "^\\s*//\\s*Content for chart\\s+",
@@ -7161,6 +7285,28 @@ update_page_pyramid_chart_js <- function(
         "."
       )
     )
+  }
+  
+  needs_update_year_spans <- !page_js_has_update_year_spans_before(
+    js_lines = js_lines,
+    line_number = chart_marker
+  )
+  
+  year_update_lines <- if (
+    isTRUE(needs_update_year_spans)
+  ) {
+    c(
+      paste0(
+        "    updateYearSpans(",
+        matrix,
+        "_data, ",
+        matrix,
+        "_meta);"
+      ),
+      ""
+    )
+  } else {
+    character()
   }
   
   all_chart_markers <- grep(
@@ -7201,6 +7347,7 @@ update_page_pyramid_chart_js <- function(
     section,
     "",
     "    // BuildR pyramid chart config start",
+    year_update_lines,
     pyramid_chart_js,
     "    // BuildR pyramid chart config end",
     "",
@@ -7776,6 +7923,7 @@ update_page_table_js <- function(
     project_root,
     page_href,
     chart_number,
+    matrix,
     table_js
 ) {
   
@@ -7800,6 +7948,16 @@ update_page_table_js <- function(
     js_lines
   )
   
+  if (
+    length(region_start) != 1 ||
+    length(region_end) != 1 ||
+    region_end <= region_start
+  ) {
+    stop(
+      "Could not uniquely identify the chart JavaScript region."
+    )
+  }
+  
   chart_marker <- grep(
     paste0(
       "^\\s*//\\s*Content for chart\\s+",
@@ -7822,6 +7980,28 @@ update_page_table_js <- function(
         "."
       )
     )
+  }
+  
+  needs_update_year_spans <- !page_js_has_update_year_spans_before(
+    js_lines = js_lines,
+    line_number = chart_marker
+  )
+  
+  year_update_lines <- if (
+    isTRUE(needs_update_year_spans)
+  ) {
+    c(
+      paste0(
+        "    updateYearSpans(",
+        matrix,
+        "_data, ",
+        matrix,
+        "_meta);"
+      ),
+      ""
+    )
+  } else {
+    character()
   }
   
   all_chart_markers <- grep(
@@ -7858,6 +8038,7 @@ update_page_table_js <- function(
     section,
     "",
     "    // BuildR table chart config start",
+    year_update_lines,
     table_js,
     "    // BuildR table chart config end",
     "",
@@ -8386,6 +8567,7 @@ update_page_map_chart_js <- function(
     project_root,
     page_href,
     chart_number,
+    matrix,
     map_chart_js
 ) {
   
@@ -8410,6 +8592,16 @@ update_page_map_chart_js <- function(
     js_lines
   )
   
+  if (
+    length(region_start) != 1 ||
+    length(region_end) != 1 ||
+    region_end <= region_start
+  ) {
+    stop(
+      "Could not uniquely identify the chart JavaScript region."
+    )
+  }
+  
   chart_marker <- grep(
     paste0(
       "^\\s*//\\s*Content for chart\\s+",
@@ -8432,6 +8624,28 @@ update_page_map_chart_js <- function(
         "."
       )
     )
+  }
+  
+  needs_update_year_spans <- !page_js_has_update_year_spans_before(
+    js_lines = js_lines,
+    line_number = chart_marker
+  )
+  
+  year_update_lines <- if (
+    isTRUE(needs_update_year_spans)
+  ) {
+    c(
+      paste0(
+        "    updateYearSpans(",
+        matrix,
+        "_data, ",
+        matrix,
+        "_meta);"
+      ),
+      ""
+    )
+  } else {
+    character()
   }
   
   all_chart_markers <- grep(
@@ -8468,6 +8682,7 @@ update_page_map_chart_js <- function(
     section,
     "",
     "    // BuildR map chart config start",
+    year_update_lines,
     map_chart_js,
     "    // BuildR map chart config end",
     "",
@@ -8508,4 +8723,51 @@ update_page_map_chart_js <- function(
   invisible(
     paths$js
   )
+}
+
+page_js_has_update_year_spans_before <- function(
+    js_lines,
+    line_number
+) {
+  
+  if (
+    length(js_lines) == 0 ||
+    line_number <= 1
+  ) {
+    return(FALSE)
+  }
+  
+  earlier_lines <- js_lines[
+    seq_len(line_number - 1)
+  ]
+  
+  any(
+    grepl(
+      "\\bupdateYearSpans\\s*\\(",
+      earlier_lines,
+      perl = TRUE
+    )
+  )
+}
+
+remove_matrix_update_year_spans <- function(
+    lines,
+    matrix
+) {
+  
+  pattern <- paste0(
+    "^\\s*updateYearSpans\\s*\\(\\s*",
+    matrix,
+    "_data\\s*,\\s*",
+    matrix,
+    "_meta\\s*\\)\\s*;?\\s*$"
+  )
+  
+  lines[
+    !grepl(
+      pattern,
+      lines,
+      perl = TRUE
+    )
+  ]
 }

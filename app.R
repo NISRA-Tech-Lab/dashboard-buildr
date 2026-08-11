@@ -5992,6 +5992,7 @@ server <- function(input, output, session) {
                     project_root = folder(),
                     page_href = selected_page_design(),
                     chart_number = current_chart,
+                    matrix = line_settings$matrix,
                     line_chart_js = line_chart_js
                   )
                 }
@@ -6009,6 +6010,7 @@ server <- function(input, output, session) {
                     project_root = folder(),
                     page_href = selected_page_design(),
                     chart_number = current_chart,
+                    matrix = bar_settings$matrix,
                     bar_chart_js = bar_chart_js
                   )
                 }
@@ -6024,12 +6026,10 @@ server <- function(input, output, session) {
                   
                   update_page_pie_chart_js(
                     project_root = folder(),
-                    page_href =
-                      selected_page_design(),
-                    chart_number =
-                      current_chart,
-                    pie_chart_js =
-                      pie_chart_js
+                    page_href = selected_page_design(),
+                    chart_number = current_chart,
+                    matrix = pie_settings$matrix,
+                    pie_chart_js = pie_chart_js
                   )
                 }
                 
@@ -6047,12 +6047,10 @@ server <- function(input, output, session) {
                   
                   update_page_treemap_chart_js(
                     project_root = folder(),
-                    page_href =
-                      selected_page_design(),
-                    chart_number =
-                      current_chart,
-                    treemap_chart_js =
-                      treemap_chart_js
+                    page_href = selected_page_design(),
+                    chart_number = current_chart,
+                    matrix = treemap_settings$matrix,
+                    treemap_chart_js = treemap_chart_js
                   )
                 }
                 
@@ -6070,12 +6068,10 @@ server <- function(input, output, session) {
                   
                   update_page_pyramid_chart_js(
                     project_root = folder(),
-                    page_href =
-                      selected_page_design(),
-                    chart_number =
-                      current_chart,
-                    pyramid_chart_js =
-                      pyramid_chart_js
+                    page_href = selected_page_design(),
+                    chart_number = current_chart,
+                    matrix = pyramid_settings$matrix,
+                    pyramid_chart_js = pyramid_chart_js
                   )
                 }
                 
@@ -6091,12 +6087,10 @@ server <- function(input, output, session) {
                   
                   update_page_table_js(
                     project_root = folder(),
-                    page_href =
-                      selected_page_design(),
-                    chart_number =
-                      current_chart,
-                    table_js =
-                      table_js
+                    page_href = selected_page_design(),
+                    chart_number = current_chart,
+                    matrix = table_settings$matrix,
+                    table_js = table_js
                   )
                 }
                 
@@ -6112,12 +6106,10 @@ server <- function(input, output, session) {
                   
                   update_page_map_chart_js(
                     project_root = folder(),
-                    page_href =
-                      selected_page_design(),
-                    chart_number =
-                      current_chart,
-                    map_chart_js =
-                      map_chart_js
+                    page_href = selected_page_design(),
+                    chart_number = current_chart,
+                    matrix = map_settings$matrix,
+                    map_chart_js = map_chart_js
                   )
                 }
                 
