@@ -4095,6 +4095,12 @@ server <- function(input, output, session) {
   
   table_chart_data <- reactiveVal(NULL)
   
+  page_map_chart_settings <- reactiveValues()
+  
+  active_map_chart <- reactiveVal(NULL)
+  
+  map_chart_data <- reactiveVal(NULL)
+  
   table_modal_columns <- reactiveVal(
     list()
   )
@@ -8114,6 +8120,86 @@ server <- function(input, output, session) {
             )
           }
           
+          #
+          # MAP
+          #
+          
+          if (identical(chart_type, "map")) {
+            
+            existing_settings <- page_map_chart_settings[[
+              as.character(current_chart)
+            ]]
+            
+            data_summary <- if (
+              !is.null(existing_settings) &&
+              isTRUE(existing_settings$configured)
+            ) {
+              
+              paste0(
+                existing_settings$area,
+                " / ",
+                existing_settings$value
+              )
+              
+            } else {
+              ""
+            }
+            
+            return(
+              tagList(
+                
+                tags$hr(),
+                
+                h4("Map options"),
+                
+                tags$div(
+                  class = "form-group",
+                  
+                  tags$label("Map data"),
+                  
+                  tags$div(
+                    class = "input-group",
+                    
+                    tags$input(
+                      id = paste0(
+                        "page_chart_",
+                        current_chart,
+                        "_map_data_summary"
+                      ),
+                      type = "text",
+                      class = "form-control",
+                      value = data_summary,
+                      readonly = "readonly",
+                      placeholder = "No map data configured"
+                    ),
+                    
+                    tags$span(
+                      class = "input-group-btn",
+                      
+                      actionButton(
+                        inputId = paste0(
+                          "configure_page_chart_map_",
+                          current_chart
+                        ),
+                        label = "Configure",
+                        icon = icon("sliders"),
+                        class = "btn-default"
+                      )
+                    )
+                  )
+                ),
+                
+                tags$p(
+                  class = "help-block",
+                  paste(
+                    "Choose the geographic area, the value used to shade",
+                    "the map, and any additional filters."
+                  )
+                )
+              )
+            )
+          }
+          
           NULL
         })
         
@@ -11136,6 +11222,565 @@ server <- function(input, output, session) {
     },
     ignoreInit = TRUE
   )
+  
+  ### Connect the configure map buttons ####
+  
+  lapply(
+    seq_len(3),
+    function(chart_number) {
+      
+      local({
+        
+        current_chart <- chart_number
+        
+        observeEvent(
+          input[[
+            paste0(
+              "configure_page_chart_map_",
+              current_chart
+            )
+          ]],
+          {
+            
+            req(folder())
+            req(selected_page_design())
+            
+            matrix <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_matrix"
+              )
+            ]]
+            
+            req(matrix)
+            req(nzchar(matrix))
+            
+            chart_type <- input[[
+              paste0(
+                "page_chart_",
+                current_chart,
+                "_type"
+              )
+            ]]
+            
+            req(
+              identical(
+                chart_type,
+                "map"
+              )
+            )
+            
+            calculation_data <- tryCatch(
+              read_card_calculation_data(
+                project_root = folder(),
+                matrix = matrix
+              ),
+              error = function(error) {
+                
+                showNotification(
+                  paste(
+                    "The map data could not be loaded:",
+                    conditionMessage(error)
+                  ),
+                  type = "error",
+                  duration = NULL
+                )
+                
+                NULL
+              }
+            )
+            
+            req(calculation_data)
+            
+            existing_settings <-
+              page_map_chart_settings[[
+                as.character(current_chart)
+              ]]
+            
+            if (
+              !is.null(existing_settings) &&
+              !identical(
+                existing_settings$matrix,
+                matrix
+              )
+            ) {
+              existing_settings <- NULL
+            }
+            
+            active_map_chart(
+              current_chart
+            )
+            
+            map_chart_data(
+              list(
+                calculation_data =
+                  calculation_data,
+                existing_settings =
+                  existing_settings
+              )
+            )
+            
+            showModal(
+              modalDialog(
+                title = paste(
+                  "Configure map for chart",
+                  current_chart
+                ),
+                
+                tags$p(
+                  paste(
+                    "Choose a supported geography and",
+                    "the numeric value used to shade the map."
+                  )
+                ),
+                
+                uiOutput(
+                  "map_chart_configuration_ui"
+                ),
+                
+                footer = tagList(
+                  modalButton(
+                    "Cancel"
+                  ),
+                  
+                  actionButton(
+                    inputId =
+                      "finish_map_chart_configuration",
+                    label = "Done",
+                    class = "btn-primary"
+                  )
+                ),
+                
+                size = "l",
+                easyClose = FALSE
+              )
+            )
+          },
+          ignoreInit = TRUE
+        )
+      })
+    }
+  )
+  
+  ### Render map configuration modal ####
+  
+  output$map_chart_configuration_ui <- renderUI({
+    
+    modal_data <- map_chart_data()
+    
+    req(modal_data)
+    
+    calculation_data <-
+      modal_data$calculation_data
+    
+    existing_settings <-
+      modal_data$existing_settings
+    
+    row_filters <-
+      calculation_data$row_filters
+    
+    row_variable_names <- vapply(
+      row_filters,
+      function(filter_definition) {
+        filter_definition$column
+      },
+      character(1)
+    )
+    
+    #
+    # Only show geography types supported by loadShapes()
+    # which are actually present in this matrix.
+    #
+    available_areas <- intersect(
+      map_area_types,
+      row_variable_names
+    )
+    
+    existing_area <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$area) &&
+      existing_settings$area %in%
+      available_areas
+    ) {
+      existing_settings$area
+    } else {
+      ""
+    }
+    
+    selected_area <-
+      input$map_chart_area
+    
+    if (
+      is.null(selected_area) ||
+      !selected_area %in%
+      available_areas
+    ) {
+      selected_area <-
+        existing_area
+    }
+    
+    #
+    # Find the possible values for the selected
+    # geographic variable.
+    #
+    area_definition <- NULL
+    
+    if (nzchar(selected_area)) {
+      
+      matching_area <- Filter(
+        function(filter_definition) {
+          identical(
+            filter_definition$column,
+            selected_area
+          )
+        },
+        row_filters
+      )
+      
+      if (length(matching_area) == 1) {
+        area_definition <-
+          matching_area[[1]]
+      }
+    }
+    
+    area_value_choices <- if (
+      !is.null(area_definition)
+    ) {
+      area_definition$choices
+    } else {
+      character()
+    }
+    
+    existing_area_values <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$area_values)
+    ) {
+      existing_settings$area_values
+    } else {
+      character()
+    }
+    
+    existing_value <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$value)
+    ) {
+      existing_settings$value
+    } else {
+      ""
+    }
+    
+    #
+    # Additional filters should exclude the geographic
+    # variable because it has its own control above.
+    #
+    ordinary_filters <- Filter(
+      function(filter_definition) {
+        
+        if (
+          nzchar(selected_area) &&
+          identical(
+            filter_definition$column,
+            selected_area
+          )
+        ) {
+          return(FALSE)
+        }
+        
+        TRUE
+      },
+      row_filters
+    )
+    
+    filter_inputs <- lapply(
+      ordinary_filters,
+      function(filter_definition) {
+        
+        existing_filter_values <- character()
+        
+        if (
+          !is.null(existing_settings) &&
+          !is.null(existing_settings$filters) &&
+          !is.null(
+            existing_settings$filters[[
+              filter_definition$column
+            ]]
+          )
+        ) {
+          existing_filter_values <-
+            existing_settings$filters[[
+              filter_definition$column
+            ]]
+        }
+        
+        selectizeInput(
+          inputId = paste0(
+            "map_chart_filter_",
+            filter_definition$input_id
+          ),
+          label =
+            filter_definition$label,
+          choices =
+            filter_definition$choices,
+          selected =
+            existing_filter_values,
+          multiple = TRUE,
+          options = list(
+            plugins = list(
+              "remove_button"
+            ),
+            placeholder = "No filter"
+          ),
+          width = "100%"
+        )
+      }
+    )
+    
+    tagList(
+      
+      h4("Geography"),
+      
+      if (length(available_areas) == 0) {
+        
+        tags$div(
+          class = "alert alert-warning",
+          paste(
+            "This Data Portal table does not contain",
+            "a geography supported by the map template."
+          )
+        )
+        
+      } else {
+        
+        selectInput(
+          inputId =
+            "map_chart_area",
+          label =
+            "Area",
+          choices = c(
+            "Select a geography" = "",
+            stats::setNames(
+              available_areas,
+              available_areas
+            )
+          ),
+          selected =
+            selected_area,
+          width = "100%"
+        )
+      },
+      
+      if (nzchar(selected_area)) {
+        
+        selectizeInput(
+          inputId =
+            "map_chart_area_values",
+          label = paste0(
+            selected_area,
+            " values"
+          ),
+          choices =
+            area_value_choices,
+          selected =
+            existing_area_values,
+          multiple = TRUE,
+          options = list(
+            plugins = list(
+              "remove_button"
+            ),
+            placeholder = "All areas"
+          ),
+          width = "100%"
+        )
+      },
+      
+      tags$p(
+        class = "help-block",
+        paste(
+          "Leave area values blank to include every",
+          "available mapped area."
+        )
+      ),
+      
+      tags$hr(),
+      
+      h4("Value"),
+      
+      selectInput(
+        inputId =
+          "map_chart_value",
+        label =
+          calculation_data$pivot_label,
+        choices = c(
+          "Select a value" = "",
+          calculation_data$pivot_columns
+        ),
+        selected =
+          existing_value,
+        width = "100%"
+      ),
+      
+      tags$hr(),
+      
+      h4("Additional filters"),
+      
+      tags$p(
+        class = "help-block",
+        "Leave a filter blank to include all values."
+      ),
+      
+      if (length(filter_inputs) > 0) {
+        tagList(
+          filter_inputs
+        )
+      } else {
+        tags$em(
+          "No additional filters are available."
+        )
+      }
+    )
+  })
+  
+  ### Finish map configuration ####
+  
+  observeEvent(
+    input$finish_map_chart_configuration,
+    {
+      
+      chart_number <-
+        active_map_chart()
+      
+      modal_data <-
+        map_chart_data()
+      
+      req(chart_number)
+      req(modal_data)
+      
+      calculation_data <-
+        modal_data$calculation_data
+      
+      area <-
+        input$map_chart_area
+      
+      if (
+        is.null(area) ||
+        !nzchar(area)
+      ) {
+        showNotification(
+          "Choose a geographic area.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      value <-
+        input$map_chart_value
+      
+      if (
+        is.null(value) ||
+        !nzchar(value)
+      ) {
+        showNotification(
+          "Choose the value used to shade the map.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      area_values <-
+        input$map_chart_area_values
+      
+      if (is.null(area_values)) {
+        area_values <- character()
+      }
+      
+      selected_filters <- list()
+      
+      for (
+        filter_definition in
+        calculation_data$row_filters
+      ) {
+        
+        column_name <-
+          filter_definition$column
+        
+        if (identical(
+          column_name,
+          area
+        )) {
+          next
+        }
+        
+        input_id <- paste0(
+          "map_chart_filter_",
+          filter_definition$input_id
+        )
+        
+        selected_values <-
+          input[[input_id]]
+        
+        if (
+          !is.null(selected_values) &&
+          length(selected_values) > 0
+        ) {
+          selected_filters[[
+            column_name
+          ]] <- as.character(
+            selected_values
+          )
+        }
+      }
+      
+      page_map_chart_settings[[
+        as.character(chart_number)
+      ]] <- list(
+        configured = TRUE,
+        matrix =
+          calculation_data$matrix,
+        pivot_label =
+          calculation_data$pivot_label,
+        area =
+          area,
+        area_values =
+          as.character(
+            area_values
+          ),
+        value =
+          value,
+        filters =
+          selected_filters
+      )
+      
+      summary_text <- paste0(
+        area,
+        " / ",
+        value
+      )
+      
+      summary_input_id <- paste0(
+        "page_chart_",
+        chart_number,
+        "_map_data_summary"
+      )
+      
+      shinyjs::runjs(
+        sprintf(
+          "$('#%s').val(%s);",
+          summary_input_id,
+          jsonlite::toJSON(
+            summary_text,
+            auto_unbox = TRUE
+          )
+        )
+      )
+      
+      removeModal()
+    },
+    ignoreInit = TRUE
+  )
+  
   
 }
 

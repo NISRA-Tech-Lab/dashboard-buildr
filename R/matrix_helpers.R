@@ -125,3 +125,10 @@ verify_matrix <- function(matrix_name) {
   
   result
 }
+
+map_area_types <- c(
+  "Local Government District",
+  "Assembly Area (2024)",
+  "Health and Social Care Trust",
+  "Assembly Area"
+)
