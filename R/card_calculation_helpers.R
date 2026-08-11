@@ -452,3 +452,298 @@ resolve_year_filter_values <- function(
   
   unique(resolved_values)
 }
+
+matrix_year_values <- function(
+    calculation_data
+) {
+  
+  row_filters <- calculation_data$row_filters
+  
+  year_definitions <- Filter(
+    function(filter_definition) {
+      isTRUE(filter_definition$is_year)
+    },
+    row_filters
+  )
+  
+  if (length(year_definitions) > 0) {
+    
+    year_column <- year_definitions[[1]]$column
+    
+  } else {
+    
+    year_candidates <- names(
+      calculation_data$data
+    )[
+      grepl(
+        "year",
+        names(calculation_data$data),
+        ignore.case = TRUE
+      )
+    ]
+    
+    if (length(year_candidates) == 0) {
+      return(NULL)
+    }
+    
+    year_column <- year_candidates[[1]]
+  }
+  
+  years <- unique(
+    calculation_data$data[[
+      year_column
+    ]]
+  )
+  
+  years <- years[
+    !is.na(years)
+  ]
+  
+  numeric_years <- suppressWarnings(
+    as.numeric(years)
+  )
+  
+  if (
+    length(years) > 0 &&
+    all(!is.na(numeric_years))
+  ) {
+    years <- years[
+      order(numeric_years)
+    ]
+  } else {
+    years <- sort(
+      as.character(years)
+    )
+  }
+  
+  list(
+    column = year_column,
+    years = years,
+    first = years[[1]],
+    latest = years[[length(years)]],
+    last = if (length(years) >= 2) {
+      years[[length(years) - 1]]
+    } else {
+      years[[1]]
+    }
+  )
+}
+
+build_matrix_year_variables_js <- function(
+    matrix
+) {
+  
+  c(
+    paste0(
+      "    const ",
+      matrix,
+      "_year_column = ",
+      matrix,
+      "_meta.variables"
+    ),
+    '        .filter(x => x["code"].includes("TLIST"))',
+    '        .map(x => x["name"])[0];',
+    "",
+    paste0(
+      "    let ",
+      matrix,
+      "_years = ",
+      matrix,
+      "_data"
+    ),
+    paste0(
+      "        .sort((a, b) => a[",
+      matrix,
+      "_year_column] - b[",
+      matrix,
+      "_year_column])"
+    ),
+    paste0(
+      "        .map(row => row[",
+      matrix,
+      "_year_column]);"
+    ),
+    "",
+    paste0(
+      "    ",
+      matrix,
+      "_years = [...new Set(",
+      matrix,
+      "_years)];"
+    ),
+    "",
+    paste0(
+      "    const ",
+      matrix,
+      "_first_year = ",
+      matrix,
+      "_years[0];"
+    ),
+    paste0(
+      "    const ",
+      matrix,
+      "_latest_year = ",
+      matrix,
+      "_years[",
+      matrix,
+      "_years.length - 1];"
+    ),
+    paste0(
+      "    const ",
+      matrix,
+      "_last_year = ",
+      matrix,
+      "_years.length >= 2 ? ",
+      matrix,
+      "_years[",
+      matrix,
+      "_years.length - 2] : ",
+      matrix,
+      "_latest_year;"
+    ),
+    ""
+  )
+}
+
+javascript_dynamic_year_value <- function(
+    value,
+    year_prefix = NULL
+) {
+  
+  prefix <- if (
+    is.null(year_prefix) ||
+    !nzchar(year_prefix)
+  ) {
+    ""
+  } else {
+    paste0(
+      year_prefix,
+      "_"
+    )
+  }
+  
+  if (identical(value, "__LATEST_YEAR__")) {
+    return(
+      paste0(
+        prefix,
+        "latest_year"
+      )
+    )
+  }
+  
+  if (identical(value, "__PREVIOUS_YEAR__")) {
+    return(
+      paste0(
+        prefix,
+        "last_year"
+      )
+    )
+  }
+  
+  if (identical(value, "__EARLIEST_YEAR__")) {
+    return(
+      paste0(
+        prefix,
+        "first_year"
+      )
+    )
+  }
+  
+  NULL
+}
+
+page_update_year_spans_matrix <- function(
+    js_lines
+) {
+  
+  matches <- grep(
+    paste0(
+      "^\\s*updateYearSpans\\s*\\(",
+      "\\s*([A-Za-z0-9_]+)_data\\s*,",
+      "\\s*\\1_meta\\s*\\)\\s*;?\\s*$"
+    ),
+    js_lines,
+    value = TRUE,
+    perl = TRUE
+  )
+  
+  if (length(matches) == 0) {
+    return(NULL)
+  }
+  
+  sub(
+    paste0(
+      "^\\s*updateYearSpans\\s*\\(",
+      "\\s*([A-Za-z0-9_]+)_data.*$"
+    ),
+    "\\1",
+    matches[[1]],
+    perl = TRUE
+  )
+}
+
+matrix_needs_own_year_variables <- function(
+    project_root,
+    matrix,
+    js_lines
+) {
+  
+  owner_matrix <- page_update_year_spans_matrix(
+    js_lines
+  )
+  
+  #
+  # No owner yet, or this matrix is the owner:
+  # use the normal global year variables.
+  #
+  if (
+    is.null(owner_matrix) ||
+    !nzchar(owner_matrix) ||
+    identical(owner_matrix, matrix)
+  ) {
+    return(FALSE)
+  }
+  
+  owner_data <- tryCatch(
+    read_card_calculation_data(
+      project_root = project_root,
+      matrix = owner_matrix
+    ),
+    error = function(e) NULL
+  )
+  
+  current_data <- tryCatch(
+    read_card_calculation_data(
+      project_root = project_root,
+      matrix = matrix
+    ),
+    error = function(e) NULL
+  )
+  
+  if (
+    is.null(owner_data) ||
+    is.null(current_data)
+  ) {
+    return(FALSE)
+  }
+  
+  owner_years <- matrix_year_values(
+    owner_data
+  )
+  
+  current_years <- matrix_year_values(
+    current_data
+  )
+  
+  if (
+    is.null(owner_years) ||
+    is.null(current_years)
+  ) {
+    return(FALSE)
+  }
+  
+  !identical(
+    as.character(owner_years$latest),
+    as.character(current_years$latest)
+  )
+}

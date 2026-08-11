@@ -5509,6 +5509,15 @@ server <- function(input, output, session) {
               chart_type <- ""
             }
             
+            #
+            # By default chart titles use the global
+            # latest-year / last-year / first-year spans.
+            #
+            # Chart types using a matrix with a different
+            # year range can override this below.
+            #
+            year_prefix <- NULL
+            
             if (chart_type == "line") {
               line_settings <- page_line_chart_settings[[
                 as.character(current_chart)
@@ -5931,15 +5940,37 @@ server <- function(input, output, session) {
                 return()
               }
               
-              map_chart_js <-
-                build_page_map_chart_js(
-                  chart_number =
-                    current_chart,
-                  matrix =
-                    map_settings$matrix,
-                  settings =
-                    map_settings
-                )
+              paths <- page_design_paths(
+                folder(),
+                selected_page_design()
+              )
+              
+              js_lines <- readLines(
+                paths$js,
+                warn = FALSE,
+                encoding = "UTF-8"
+              )
+              
+              needs_own_years <- matrix_needs_own_year_variables(
+                project_root = folder(),
+                matrix = map_settings$matrix,
+                js_lines = js_lines
+              )
+              
+              year_prefix <- if (
+                isTRUE(needs_own_years)
+              ) {
+                map_settings$matrix
+              } else {
+                NULL
+              }
+              
+              map_chart_js <- build_page_map_chart_js(
+                chart_number = current_chart,
+                matrix = map_settings$matrix,
+                settings = map_settings,
+                year_prefix = year_prefix
+              )
             }
             
             matrix <- input[[
@@ -5960,7 +5991,8 @@ server <- function(input, output, session) {
                   project_root = folder(),
                   page_href = selected_page_design(),
                   chart_number = current_chart,
-                  chart_title = chart_title
+                  chart_title = chart_title,
+                  year_prefix = year_prefix
                 )
                 
                 update_page_chart_type(
@@ -6109,7 +6141,8 @@ server <- function(input, output, session) {
                     page_href = selected_page_design(),
                     chart_number = current_chart,
                     matrix = map_settings$matrix,
-                    map_chart_js = map_chart_js
+                    map_chart_js = map_chart_js,
+                    use_matrix_years = needs_own_years
                   )
                 }
                 

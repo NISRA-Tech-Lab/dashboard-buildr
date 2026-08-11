@@ -1572,10 +1572,19 @@ update_homepage_card_link <- function(
   invisible(index_html_path)
 }
 
-parse_homepage_year_tags <- function(text) {
+parse_homepage_year_tags <- function(
+    text,
+    year_prefix = NULL
+) {
   
   text <- trimws(
     as.character(text)
+  )
+  
+  tokens <- c(
+    "<<latest-year>>",
+    "<<last-year>>",
+    "<<first-year>>"
   )
   
   placeholders <- c(
@@ -1584,16 +1593,23 @@ parse_homepage_year_tags <- function(text) {
     "<<first-year>>" = "___HOMEPAGE_FIRST_YEAR___"
   )
   
-  for (tag in names(placeholders)) {
+  #
+  # Temporarily replace the supported dynamic
+  # year tags before escaping user-entered HTML.
+  #
+  for (token in tokens) {
+    
     text <- gsub(
-      pattern = tag,
-      replacement = placeholders[[tag]],
+      pattern = token,
+      replacement = placeholders[[token]],
       x = text,
       fixed = TRUE
     )
   }
   
+  #
   # Escape all other user-entered HTML.
+  #
   text <- as.character(
     htmltools::htmlEscape(
       text,
@@ -1601,19 +1617,41 @@ parse_homepage_year_tags <- function(text) {
     )
   )
   
-  replacements <- c(
-    "___HOMEPAGE_LATEST_YEAR___" =
-      '<span class="latest-year"></span>',
-    "___HOMEPAGE_LAST_YEAR___" =
-      '<span class="last-year"></span>',
-    "___HOMEPAGE_FIRST_YEAR___" =
-      '<span class="first-year"></span>'
-  )
-  
-  for (placeholder in names(replacements)) {
+  #
+  # Restore the dynamic year tags as spans.
+  #
+  # With no year_prefix:
+  #
+  #   <<latest-year>>
+  #
+  # becomes:
+  #
+  #   <span class="latest-year"></span>
+  #
+  # With year_prefix = "MYE01T013":
+  #
+  #   <<latest-year>>
+  #
+  # becomes:
+  #
+  #   <span class="MYE01T013-latest-year"></span>
+  #
+  for (token in tokens) {
+    
+    year_class <- page_dynamic_year_class(
+      token = token,
+      year_prefix = year_prefix
+    )
+    
+    replacement <- paste0(
+      '<span class="',
+      year_class,
+      '"></span>'
+    )
+    
     text <- gsub(
-      pattern = placeholder,
-      replacement = replacements[[placeholder]],
+      pattern = placeholders[[token]],
+      replacement = replacement,
       x = text,
       fixed = TRUE
     )
@@ -2364,22 +2402,46 @@ update_homepage_card_value_js <- function(
 
 restore_homepage_year_tags <- function(html) {
   
+  #
+  # Restore latest-year tags.
+  #
+  # Matches both:
+  #
+  #   <span class="latest-year"></span>
+  #   <span class="MYE01T013-latest-year"></span>
+  #
   html <- gsub(
-    '<span\\s+class=["\']latest-year["\']\\s*></span>',
+    '<span\\s+class=["\'](?:[A-Za-z0-9_]+-)?latest-year["\']\\s*></span>',
     "<<latest-year>>",
     html,
     perl = TRUE
   )
   
+  #
+  # Restore previous-year tags.
+  #
+  # Matches both:
+  #
+  #   <span class="last-year"></span>
+  #   <span class="MYE01T013-last-year"></span>
+  #
   html <- gsub(
-    '<span\\s+class=["\']last-year["\']\\s*></span>',
+    '<span\\s+class=["\'](?:[A-Za-z0-9_]+-)?last-year["\']\\s*></span>',
     "<<last-year>>",
     html,
     perl = TRUE
   )
   
+  #
+  # Restore earliest-year tags.
+  #
+  # Matches both:
+  #
+  #   <span class="first-year"></span>
+  #   <span class="MYE01T013-first-year"></span>
+  #
   html <- gsub(
-    '<span\\s+class=["\']first-year["\']\\s*></span>',
+    '<span\\s+class=["\'](?:[A-Za-z0-9_]+-)?first-year["\']\\s*></span>',
     "<<first-year>>",
     html,
     perl = TRUE

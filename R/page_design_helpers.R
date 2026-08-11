@@ -2294,7 +2294,8 @@ update_page_chart_title <- function(
     project_root,
     page_href,
     chart_number,
-    chart_title
+    chart_title,
+    year_prefix = NULL
 ) {
   
   paths <- page_design_paths(
@@ -2380,7 +2381,8 @@ update_page_chart_title <- function(
   )
   
   parsed_title <- parse_homepage_year_tags(
-    chart_title
+    chart_title,
+    year_prefix = year_prefix
   )
   
   opening_line <- sub(
@@ -4193,7 +4195,8 @@ javascript_array_value <- function(value) {
 
 build_chart_filter_condition <- function(
     column_name,
-    selected_values
+    selected_values,
+    year_prefix = NULL
 ) {
   if (
     is.null(selected_values) ||
@@ -4204,12 +4207,13 @@ build_chart_filter_condition <- function(
   
   js_value <- function(value) {
     
-    if (identical(value, "__LATEST_YEAR__")) {
-      return("latest_year")
-    }
+    dynamic_year_value <- javascript_dynamic_year_value(
+      value = value,
+      year_prefix = year_prefix
+    )
     
-    if (identical(value, "__FIRST_YEAR__")) {
-      return("first_year")
+    if (!is.null(dynamic_year_value)) {
+      return(dynamic_year_value)
     }
     
     javascript_string(value)
@@ -4218,9 +4222,9 @@ build_chart_filter_condition <- function(
   if (length(selected_values) == 1) {
     return(
       paste0(
-        'row[',
+        "row[",
         javascript_string(column_name),
-        '] == ',
+        "] == ",
         js_value(selected_values[[1]])
       )
     )
@@ -4972,7 +4976,20 @@ normalise_page_chart_capture_ids <- function(
   html_lines
 }
 
-javascript_query_value <- function(value) {
+javascript_query_value <- function(
+  value,
+  year_prefix = NULL
+  
+) {
+  
+  dynamic_year_value <- javascript_dynamic_year_value(
+    value = value,
+    year_prefix = year_prefix
+  )
+  
+  if (!is.null(dynamic_year_value)) {
+    return(dynamic_year_value)
+  }
   
   if (identical(value, "__LATEST_YEAR__")) {
     return("latest_year")
@@ -8149,7 +8166,8 @@ page_chart_type_choices_for <- function(
 build_page_map_chart_js <- function(
     chart_number,
     matrix,
-    settings
+    settings,
+    year_prefix = NULL
 ) {
   
   data_variable <- paste0(
@@ -8188,10 +8206,8 @@ build_page_map_chart_js <- function(
         filter_conditions,
         build_chart_filter_condition(
           column_name = column_name,
-          selected_values =
-            settings$filters[[
-              column_name
-            ]]
+          selected_values = settings$filters[[column_name]],
+          year_prefix = year_prefix
         )
       )
     }
@@ -8306,7 +8322,8 @@ build_page_map_chart_js <- function(
         length(values) == 1
       ) {
         javascript_query_value(
-          values[[1]]
+          values[[1]],
+          year_prefix = year_prefix
         )
       } else {
         paste0(
@@ -8314,7 +8331,12 @@ build_page_map_chart_js <- function(
           paste(
             vapply(
               values,
-              javascript_query_value,
+              function(value) {
+                javascript_query_value(
+                  value,
+                  year_prefix = year_prefix
+                )
+              },
               character(1)
             ),
             collapse = ", "
@@ -8582,7 +8604,8 @@ update_page_map_chart_js <- function(
     page_href,
     chart_number,
     matrix,
-    map_chart_js
+    map_chart_js,
+    use_matrix_years = FALSE
 ) {
   
   paths <- page_design_paths(
@@ -8640,6 +8663,10 @@ update_page_map_chart_js <- function(
     )
   }
   
+  #
+  # If no earlier updateYearSpans() call exists, this
+  # chart becomes the owner of the global year values.
+  #
   needs_update_year_spans <- !page_js_has_update_year_spans_before(
     js_lines = js_lines,
     line_number = chart_marker
@@ -8657,6 +8684,22 @@ update_page_map_chart_js <- function(
         "_meta);"
       ),
       ""
+    )
+  } else {
+    character()
+  }
+  
+  #
+  # If another matrix already owns updateYearSpans()
+  # and this matrix has a different available year range,
+  # create matrix-specific year variables.
+  #
+  matrix_year_lines <- if (
+    isTRUE(use_matrix_years) &&
+    !isTRUE(needs_update_year_spans)
+  ) {
+    build_matrix_year_variables_js(
+      matrix = matrix
     )
   } else {
     character()
@@ -8697,6 +8740,7 @@ update_page_map_chart_js <- function(
     "",
     "    // BuildR map chart config start",
     year_update_lines,
+    matrix_year_lines,
     map_chart_js,
     "    // BuildR map chart config end",
     "",
@@ -8784,4 +8828,79 @@ remove_matrix_update_year_spans <- function(
       perl = TRUE
     )
   ]
+}
+
+page_dynamic_year_class <- function(
+    token,
+    year_prefix = NULL
+) {
+  
+  suffix <- switch(
+    token,
+    "<<latest-year>>" = "latest-year",
+    "<<last-year>>" = "last-year",
+    "<<first-year>>" = "first-year",
+    NULL
+  )
+  
+  if (is.null(suffix)) {
+    return(NULL)
+  }
+  
+  if (
+    is.null(year_prefix) ||
+    !nzchar(year_prefix)
+  ) {
+    return(suffix)
+  }
+  
+  paste0(
+    year_prefix,
+    "-",
+    suffix
+  )
+}
+
+build_matrix_year_span_js <- function(
+    matrix
+) {
+  
+  c(
+    paste0(
+      '    document.querySelectorAll(".',
+      matrix,
+      '-latest-year").forEach(el => {'
+    ),
+    paste0(
+      "        el.innerHTML = ",
+      matrix,
+      "_latest_year;"
+    ),
+    "    });",
+    "",
+    paste0(
+      '    document.querySelectorAll(".',
+      matrix,
+      '-last-year").forEach(el => {'
+    ),
+    paste0(
+      "        el.innerHTML = ",
+      matrix,
+      "_last_year;"
+    ),
+    "    });",
+    "",
+    paste0(
+      '    document.querySelectorAll(".',
+      matrix,
+      '-first-year").forEach(el => {'
+    ),
+    paste0(
+      "        el.innerHTML = ",
+      matrix,
+      "_first_year;"
+    ),
+    "    });",
+    ""
+  )
 }
