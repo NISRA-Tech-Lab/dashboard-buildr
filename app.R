@@ -5098,6 +5098,63 @@ server <- function(input, output, session) {
       )
     }
     
+    #
+    # Build a complete vector of the chart types currently
+    # selected on the page.
+    #
+    # Prefer the live Shiny input value where available.
+    # Otherwise fall back to the chart type read from the
+    # existing page JavaScript.
+    #
+    current_types <- vapply(
+      seq_len(chart_count),
+      function(chart_number) {
+        
+        input_id <- paste0(
+          "page_chart_",
+          chart_number,
+          "_type"
+        )
+        
+        live_value <- input[[input_id]]
+        
+        if (
+          !is.null(live_value) &&
+          length(live_value) > 0 &&
+          !is.na(live_value[[1]])
+        ) {
+          return(
+            as.character(
+              live_value[[1]]
+            )
+          )
+        }
+        
+        if (
+          chart_number <= length(chart_types)
+        ) {
+          
+          stored_value <-
+            chart_types[[chart_number]]
+          
+          if (
+            !is.null(stored_value) &&
+            length(stored_value) > 0 &&
+            !is.na(stored_value[[1]])
+          ) {
+            return(
+              as.character(
+                stored_value[[1]]
+              )
+            )
+          }
+        }
+        
+        ""
+      },
+      character(1)
+    )
+    
     accordion_id <- "page-chart-accordion"
     
     tags$div(
@@ -5109,6 +5166,9 @@ server <- function(input, output, session) {
         seq_len(chart_count),
         function(chart_number) {
           
+          #
+          # Current chart title
+          #
           current_title <- if (
             chart_number <= length(chart_values)
           ) {
@@ -5128,34 +5188,82 @@ server <- function(input, output, session) {
             current_title
           )[1]
           
-          current_type <- if (
-            chart_number <= length(chart_types)
-          ) {
-            chart_types[chart_number]
-          } else {
-            ""
-          }
+          #
+          # Current chart type
+          #
+          current_type <- current_types[[
+            chart_number
+          ]]
           
           if (
-            is.na(current_type) ||
-            is.null(current_type)
+            is.null(current_type) ||
+            length(current_type) == 0 ||
+            is.na(current_type)
           ) {
             current_type <- ""
           }
           
+          #
+          # Current matrix
+          #
           current_matrix <- if (
             chart_number <= length(chart_matrices)
           ) {
-            chart_matrices[chart_number]
+            chart_matrices[[chart_number]]
           } else {
             ""
           }
           
           if (
-            is.na(current_matrix) ||
-            is.null(current_matrix)
+            is.null(current_matrix) ||
+            length(current_matrix) == 0 ||
+            is.na(current_matrix)
           ) {
             current_matrix <- ""
+          }
+          
+          current_matrix <- as.character(
+            current_matrix
+          )[1]
+          
+          #
+          # Restrict chart type choices for this card.
+          #
+          # In particular:
+          #
+          #   - only one map can be present on a page
+          #   - maps are unavailable when there are three charts
+          #
+          available_chart_types <-
+            page_chart_type_choices_for(
+              chart_number = chart_number,
+              current_types = current_types,
+              number_of_charts = chart_count
+            )
+          
+          #
+          # If this chart is already a map, preserve Map in its
+          # own selector even while it is unavailable elsewhere.
+          #
+          # page_chart_type_choices_for() should normally already
+          # do this, but this protects existing pages from losing
+          # their selected value.
+          #
+          if (
+            identical(
+              current_type,
+              "map"
+            ) &&
+            !"map" %in%
+            unname(
+              available_chart_types
+            )
+          ) {
+            
+            available_chart_types <- c(
+              available_chart_types,
+              "Map" = "map"
+            )
           }
           
           collapse_id <- paste0(
@@ -5250,8 +5358,8 @@ server <- function(input, output, session) {
                     
                     paste(
                       "Configure the chart title, type and data.",
-                      "The chart preview and detailed data options",
-                      "will be added in the next stage."
+                      "Use the chart-specific options below",
+                      "to configure the visualisation."
                     )
                   )
                 ),
@@ -5290,11 +5398,24 @@ server <- function(input, output, session) {
                   label = "Chart type",
                   choices = c(
                     "Select a chart type" = "",
-                    page_chart_type_choices()
+                    available_chart_types
                   ),
                   selected = current_type,
                   width = "100%"
                 ),
+                
+                if (
+                  chart_count >= 3 &&
+                  !identical(
+                    current_type,
+                    "map"
+                  )
+                ) {
+                  tags$small(
+                    class = "help-block",
+                    "Maps are available on pages with one or two chart cards."
+                  )
+                },
                 
                 selectInput(
                   inputId = paste0(
@@ -5310,6 +5431,7 @@ server <- function(input, output, session) {
                 
                 tags$div(
                   style = "margin-top: 15px;",
+                  
                   uiOutput(
                     paste0(
                       "page_chart_",
@@ -5724,6 +5846,102 @@ server <- function(input, output, session) {
                 )
             }
             
+            if (chart_type == "map") {
+              
+              map_settings <-
+                page_map_chart_settings[[
+                  as.character(
+                    current_chart
+                  )
+                ]]
+              
+              if (
+                is.null(map_settings) ||
+                !isTRUE(
+                  map_settings$configured
+                )
+              ) {
+                
+                showNotification(
+                  paste0(
+                    "Configure the map data for chart ",
+                    current_chart,
+                    " before saving."
+                  ),
+                  type = "error"
+                )
+                
+                return()
+              }
+              
+              #
+              # Server-side protection: only one map per page.
+              #
+              chart_count <- page_chart_editor_count()
+              
+              current_types <- vapply(
+                seq_len(chart_count),
+                function(i) {
+                  
+                  value <- input[[
+                    paste0(
+                      "page_chart_",
+                      i,
+                      "_type"
+                    )
+                  ]]
+                  
+                  if (
+                    is.null(value) ||
+                    length(value) == 0 ||
+                    is.na(value[[1]])
+                  ) {
+                    ""
+                  } else {
+                    as.character(
+                      value[[1]]
+                    )
+                  }
+                },
+                character(1)
+              )
+              
+              other_map_charts <- setdiff(
+                which(current_types == "map"),
+                current_chart
+              )
+              
+              if (length(other_map_charts) > 0) {
+                
+                showNotification(
+                  "Only one map can be added to a page.",
+                  type = "error"
+                )
+                
+                return()
+              }
+              
+              if (chart_count >= 3) {
+                
+                showNotification(
+                  "Maps can only be used on pages with one or two chart cards.",
+                  type = "error"
+                )
+                
+                return()
+              }
+              
+              map_chart_js <-
+                build_page_map_chart_js(
+                  chart_number =
+                    current_chart,
+                  matrix =
+                    map_settings$matrix,
+                  settings =
+                    map_settings
+                )
+            }
+            
             matrix <- input[[
               paste0(
                 "page_chart_",
@@ -5879,6 +6097,27 @@ server <- function(input, output, session) {
                       current_chart,
                     table_js =
                       table_js
+                  )
+                }
+                
+                if (chart_type == "map") {
+                  
+                  update_page_map_html(
+                    project_root = folder(),
+                    page_href =
+                      selected_page_design(),
+                    chart_number =
+                      current_chart
+                  )
+                  
+                  update_page_map_chart_js(
+                    project_root = folder(),
+                    page_href =
+                      selected_page_design(),
+                    chart_number =
+                      current_chart,
+                    map_chart_js =
+                      map_chart_js
                   )
                 }
                 

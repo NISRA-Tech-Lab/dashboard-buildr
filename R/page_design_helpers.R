@@ -7899,3 +7899,663 @@ update_page_table_js <- function(
     paths$js
   )
 }
+
+page_chart_type_choices_for <- function(
+    chart_number,
+    current_types,
+    number_of_charts
+) {
+  
+  choices <- c(
+    "Bar chart" = "bar",
+    "Table" = "table",
+    "Line chart" = "line",
+    "Pie chart" = "pie",
+    "Map" = "map",
+    "Population pyramid" = "pyramid",
+    "Treemap" = "treemap"
+  )
+  
+  map_charts <- which(
+    current_types == "map"
+  )
+  
+  #
+  # Only one map can appear on a page.
+  #
+  if (
+    length(map_charts) > 0 &&
+    !chart_number %in% map_charts
+  ) {
+    choices <- choices[
+      choices != "map"
+    ]
+  }
+  
+  #
+  # Maps use a wider layout and are not supported
+  # when three chart cards are present.
+  #
+  if (
+    number_of_charts >= 3 &&
+    !identical(
+      current_types[[chart_number]],
+      "map"
+    )
+  ) {
+    choices <- choices[
+      choices != "map"
+    ]
+  }
+  
+  choices
+}
+
+build_page_map_chart_js <- function(
+    chart_number,
+    matrix,
+    settings
+) {
+  
+  data_variable <- paste0(
+    matrix,
+    "_data"
+  )
+  
+  map_data_variable <- paste0(
+    "map_chart_",
+    chart_number,
+    "_data"
+  )
+  
+  query_variable <- paste0(
+    "map_chart_",
+    chart_number,
+    "_query"
+  )
+  
+  filter_conditions <- character()
+  
+  #
+  # Additional filters.
+  #
+  if (
+    !is.null(settings$filters) &&
+    length(settings$filters) > 0
+  ) {
+    
+    for (
+      column_name in
+      names(settings$filters)
+    ) {
+      
+      filter_conditions <- c(
+        filter_conditions,
+        build_chart_filter_condition(
+          column_name = column_name,
+          selected_values =
+            settings$filters[[
+              column_name
+            ]]
+        )
+      )
+    }
+  }
+  
+  #
+  # Optional restriction to selected geographic areas.
+  #
+  if (
+    !is.null(settings$area_values) &&
+    length(settings$area_values) > 0
+  ) {
+    
+    filter_conditions <- c(
+      filter_conditions,
+      build_chart_filter_condition(
+        column_name =
+          settings$area,
+        selected_values =
+          settings$area_values
+      )
+    )
+  }
+  
+  data_block <- if (
+    length(filter_conditions) > 0
+  ) {
+    
+    c(
+      paste0(
+        "    const ",
+        map_data_variable,
+        " = ",
+        data_variable
+      ),
+      paste0(
+        "        .filter(row => ",
+        paste(
+          filter_conditions,
+          collapse = " &&\n                       "
+        ),
+        ");"
+      )
+    )
+    
+  } else {
+    
+    paste0(
+      "    const ",
+      map_data_variable,
+      " = ",
+      data_variable,
+      ";"
+    )
+  }
+  
+  #
+  # plotMap() call.
+  #
+  map_call <- c(
+    "",
+    "    plotMap({",
+    paste0(
+      '        elementId: "map-container-',
+      chart_number,
+      '",'
+    ),
+    paste0(
+      '        legendId: "map-legend-',
+      chart_number,
+      '",'
+    ),
+    paste0(
+      "        data: ",
+      map_data_variable,
+      ","
+    ),
+    paste0(
+      "        meta: ",
+      matrix,
+      "_meta,"
+    ),
+    paste0(
+      "        area: ",
+      javascript_string(
+        settings$area
+      ),
+      ","
+    ),
+    paste0(
+      "        value: ",
+      javascript_string(
+        settings$value
+      )
+    ),
+    "    });"
+  )
+  
+  #
+  # Download query.
+  #
+  query_entries <- character()
+  
+  if (
+    !is.null(settings$filters) &&
+    length(settings$filters) > 0
+  ) {
+    
+    for (
+      column_name in
+      names(settings$filters)
+    ) {
+      
+      values <- settings$filters[[
+        column_name
+      ]]
+      
+      query_value <- if (
+        length(values) == 1
+      ) {
+        javascript_query_value(
+          values[[1]]
+        )
+      } else {
+        paste0(
+          "[",
+          paste(
+            vapply(
+              values,
+              javascript_query_value,
+              character(1)
+            ),
+            collapse = ", "
+          ),
+          "]"
+        )
+      }
+      
+      query_entries <- c(
+        query_entries,
+        paste0(
+          "        ",
+          javascript_string(
+            column_name
+          ),
+          ": ",
+          query_value
+        )
+      )
+    }
+  }
+  
+  #
+  # Geographic restrictions are included in the query
+  # only when the user explicitly selected area values.
+  #
+  if (
+    !is.null(settings$area_values) &&
+    length(settings$area_values) > 0
+  ) {
+    
+    area_query_value <- if (
+      length(settings$area_values) == 1
+    ) {
+      javascript_string(
+        settings$area_values[[1]]
+      )
+    } else {
+      paste0(
+        "[",
+        paste(
+          vapply(
+            settings$area_values,
+            javascript_string,
+            character(1)
+          ),
+          collapse = ", "
+        ),
+        "]"
+      )
+    }
+    
+    query_entries <- c(
+      query_entries,
+      paste0(
+        "        ",
+        javascript_string(
+          settings$area
+        ),
+        ": ",
+        area_query_value
+      )
+    )
+  }
+  
+  #
+  # Selected value represents one value of the
+  # pivoted metadata variable.
+  #
+  if (
+    !is.null(settings$pivot_label) &&
+    nzchar(settings$pivot_label)
+  ) {
+    
+    query_entries <- c(
+      query_entries,
+      paste0(
+        "        ",
+        javascript_string(
+          settings$pivot_label
+        ),
+        ": ",
+        javascript_string(
+          settings$value
+        )
+      )
+    )
+  }
+  
+  query_block <- if (
+    length(query_entries) == 0
+  ) {
+    
+    paste0(
+      "    const ",
+      query_variable,
+      " = {};"
+    )
+    
+  } else {
+    
+    c(
+      paste0(
+        "    const ",
+        query_variable,
+        " = {"
+      ),
+      paste0(
+        query_entries,
+        collapse = ",\n"
+      ),
+      "    };"
+    )
+  }
+  
+  download_call <- c(
+    "",
+    "    downloadButton(",
+    paste0(
+      '        "chart-',
+      chart_number,
+      '-capture",'
+    ),
+    paste0(
+      "        ",
+      javascript_string(matrix),
+      ","
+    ),
+    paste0(
+      "        dateFormat(",
+      matrix,
+      "_meta.updated),"
+    ),
+    paste0(
+      "        ",
+      query_variable,
+      ","
+    ),
+    '        "map"',
+    "    );"
+  )
+  
+  c(
+    data_block,
+    map_call,
+    "",
+    query_block,
+    download_call
+  )
+}
+
+update_page_map_html <- function(
+    project_root,
+    page_href,
+    chart_number
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  html_lines <- readLines(
+    paths$html,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  chart_region <- find_page_chart_cards_region(
+    html_lines
+  )
+  
+  chart_start <- chart_region$chart_starts[
+    chart_number
+  ]
+  
+  chart_end <- find_closing_div(
+    html_lines,
+    chart_start
+  )
+  
+  body_starts <- grep(
+    'class=["\'][^"\']*\\bcard-body\\b',
+    html_lines,
+    perl = TRUE
+  )
+  
+  body_starts <- body_starts[
+    body_starts > chart_start &
+      body_starts < chart_end
+  ]
+  
+  if (length(body_starts) != 1) {
+    stop(
+      paste0(
+        "Could not uniquely identify the card body for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  body_start <- body_starts[[1]]
+  
+  body_end <- find_closing_div(
+    html_lines,
+    body_start
+  )
+  
+  indent <- sub(
+    "^(\\s*).*",
+    "\\1",
+    html_lines[
+      body_start
+    ]
+  )
+  
+  opening_tag <- paste0(
+    indent,
+    '<div class="card-body">'
+  )
+  
+  replacement <- c(
+    opening_tag,
+    
+    paste0(
+      indent,
+      "    ",
+      '<div id="map-legend-',
+      chart_number,
+      '" class="mt-3"></div>'
+    ),
+    
+    "",
+    
+    paste0(
+      indent,
+      "    ",
+      '<small class="text-muted d-block mt-2">'
+    ),
+    
+    paste0(
+      indent,
+      "        ",
+      "Hover over individual areas on the map to see more details."
+    ),
+    
+    paste0(
+      indent,
+      "    ",
+      "</small>"
+    ),
+    
+    "",
+    
+    paste0(
+      indent,
+      "    ",
+      '<div id="map-container-',
+      chart_number,
+      '" class="map"></div>'
+    ),
+    
+    paste0(
+      indent,
+      "</div>"
+    )
+  )
+  
+  updated_html <- c(
+    if (body_start > 1) {
+      html_lines[
+        seq_len(
+          body_start - 1
+        )
+      ]
+    } else {
+      character()
+    },
+    
+    replacement,
+    
+    if (body_end < length(html_lines)) {
+      html_lines[
+        seq.int(
+          body_end + 1,
+          length(html_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_html,
+    paths$html,
+    useBytes = TRUE
+  )
+  
+  invisible(
+    paths$html
+  )
+}
+
+update_page_map_chart_js <- function(
+    project_root,
+    page_href,
+    chart_number,
+    map_chart_js
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  js_lines <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  region_start <- grep(
+    "^\\s*//\\s*Insert chart content below\\s*$",
+    js_lines
+  )
+  
+  region_end <- grep(
+    "^\\s*//\\s*End chart content\\s*$",
+    js_lines
+  )
+  
+  chart_marker <- grep(
+    paste0(
+      "^\\s*//\\s*Content for chart\\s+",
+      chart_number,
+      "\\s*$"
+    ),
+    js_lines
+  )
+  
+  chart_marker <- chart_marker[
+    chart_marker > region_start &
+      chart_marker < region_end
+  ]
+  
+  if (length(chart_marker) != 1) {
+    stop(
+      paste0(
+        "Could not identify the JavaScript section for chart ",
+        chart_number,
+        "."
+      )
+    )
+  }
+  
+  all_chart_markers <- grep(
+    "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
+    js_lines
+  )
+  
+  all_chart_markers <- all_chart_markers[
+    all_chart_markers > region_start &
+      all_chart_markers < region_end
+  ]
+  
+  later_markers <- all_chart_markers[
+    all_chart_markers > chart_marker
+  ]
+  
+  section_end <- if (
+    length(later_markers) > 0
+  ) {
+    min(later_markers) - 1
+  } else {
+    region_end - 1
+  }
+  
+  section <- js_lines[
+    chart_marker:section_end
+  ]
+  
+  section <- remove_page_chart_config_blocks(
+    section
+  )
+  
+  replacement_section <- c(
+    section,
+    "",
+    "    // BuildR map chart config start",
+    map_chart_js,
+    "    // BuildR map chart config end",
+    "",
+    ""
+  )
+  
+  updated_js <- c(
+    if (chart_marker > 1) {
+      js_lines[
+        seq_len(
+          chart_marker - 1
+        )
+      ]
+    } else {
+      character()
+    },
+    
+    replacement_section,
+    
+    if (section_end < length(js_lines)) {
+      js_lines[
+        seq.int(
+          section_end + 1,
+          length(js_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_js,
+    paths$js,
+    useBytes = TRUE
+  )
+  
+  invisible(
+    paths$js
+  )
+}
