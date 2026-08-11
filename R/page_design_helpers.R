@@ -8705,6 +8705,17 @@ update_page_map_chart_js <- function(
     character()
   }
   
+  matrix_year_span_lines <- if (
+    isTRUE(use_matrix_years) &&
+    !isTRUE(needs_update_year_spans)
+  ) {
+    build_matrix_year_span_js(
+      matrix = matrix
+    )
+  } else {
+    character()
+  }
+  
   all_chart_markers <- grep(
     "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
     js_lines
@@ -8735,15 +8746,27 @@ update_page_map_chart_js <- function(
     section
   )
   
+  #
+  # Remove blank lines left behind by the previous
+  # managed chart block so repeated saves do not
+  # accumulate whitespace.
+  #
+  while (
+    length(section) > 0 &&
+    !nzchar(trimws(section[[length(section)]]))
+  ) {
+    section <- section[-length(section)]
+  }
+  
   replacement_section <- c(
     section,
     "",
     "    // BuildR map chart config start",
     year_update_lines,
     matrix_year_lines,
+    matrix_year_span_lines,
     map_chart_js,
     "    // BuildR map chart config end",
-    "",
     ""
   )
   
