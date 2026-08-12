@@ -5576,7 +5576,30 @@ server <- function(input, output, session) {
                 show_points <- TRUE
               }
               
+              paths <- page_design_paths(
+                folder(),
+                selected_page_design()
+              )
               
+              js_lines <- readLines(
+                paths$js,
+                warn = FALSE,
+                encoding = "UTF-8"
+              )
+              
+              needs_own_years <- matrix_needs_own_year_variables(
+                project_root = folder(),
+                matrix = line_settings$matrix,
+                js_lines = js_lines
+              )
+              
+              year_prefix <- if (
+                isTRUE(needs_own_years)
+              ) {
+                line_settings$matrix
+              } else {
+                NULL
+              }
               
               line_chart_js <- build_page_line_chart_js(
                 chart_number = current_chart,
@@ -5587,7 +5610,8 @@ server <- function(input, output, session) {
                 recent_years = recent_years,
                 lines = line_settings$lines,
                 unit = unit,
-                show_points = show_points
+                show_points = show_points,
+                year_prefix = year_prefix
               )
               
               line_settings$year_mode <- year_mode
@@ -6230,7 +6254,8 @@ server <- function(input, output, session) {
                     page_href = selected_page_design(),
                     chart_number = current_chart,
                     matrix = line_settings$matrix,
-                    line_chart_js = line_chart_js
+                    line_chart_js = line_chart_js,
+                    use_matrix_years = needs_own_years
                   )
                 }
                 

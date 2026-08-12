@@ -4255,7 +4255,8 @@ build_page_line_chart_js <- function(
     recent_years,
     lines,
     unit,
-    show_points
+    show_points,
+    year_prefix = NULL
 ) {
   
   data_variable <- paste0(
@@ -4269,7 +4270,10 @@ build_page_line_chart_js <- function(
     "_years"
   )
   
-  # Build years dynamically from the live dataset.
+  #
+  # Build years dynamically from this matrix's
+  # actual year column.
+  #
   years_lines <- c(
     paste0(
       "    let ",
@@ -4292,6 +4296,9 @@ build_page_line_chart_js <- function(
     )
   )
   
+  #
+  # Restrict to the most recent n years when requested.
+  #
   if (identical(year_mode, "recent")) {
     
     recent_years <- as.integer(
@@ -4332,6 +4339,9 @@ build_page_line_chart_js <- function(
     )
   }
   
+  #
+  # Build each configured line.
+  #
   series_lines <- vapply(
     lines,
     function(line_definition) {
@@ -4345,6 +4355,10 @@ build_page_line_chart_js <- function(
         )
       }
       
+      #
+      # Keep only rows whose year appears in the
+      # selected line-chart year array.
+      #
       filter_conditions <- c(
         paste0(
           years_variable,
@@ -4373,7 +4387,8 @@ build_page_line_chart_js <- function(
               selected_values =
                 line_filters[[
                   column_name
-                ]]
+                ]],
+              year_prefix = year_prefix
             )
           )
         }
@@ -4481,8 +4496,8 @@ build_page_line_chart_js <- function(
   )
   
   #
-  # Work out which ordinary row-filter dimensions are restricted
-  # consistently across every configured line.
+  # Work out which ordinary row-filter dimensions
+  # are restricted consistently across every line.
   #
   filter_names <- unique(
     unlist(
@@ -4501,10 +4516,11 @@ build_page_line_chart_js <- function(
   query_entries <- character()
   
   #
-  # Only include the time dimension when the user selected
-  # "Most recent n years". "All years" means no query restriction.
+  # Only restrict the time dimension in the download
+  # query when "Most recent n years" is selected.
   #
   if (identical(year_mode, "recent")) {
+    
     query_entries <- c(
       query_entries,
       paste0(
@@ -4520,8 +4536,9 @@ build_page_line_chart_js <- function(
   #
   # Add ordinary filter dimensions.
   #
-  # If one line leaves a dimension unrestricted, omit that
-  # dimension from the download query.
+  # If any configured line leaves a dimension
+  # unrestricted, omit that dimension from the
+  # download query.
   #
   for (filter_name in filter_names) {
     
@@ -4570,8 +4587,9 @@ build_page_line_chart_js <- function(
           "        ",
           javascript_string(filter_name),
           ": ",
-          javascript_string(
-            selected_values
+          javascript_query_value(
+            selected_values[[1]],
+            year_prefix = year_prefix
           )
         )
       )
@@ -4587,7 +4605,12 @@ build_page_line_chart_js <- function(
           paste(
             vapply(
               selected_values,
-              javascript_string,
+              function(value) {
+                javascript_query_value(
+                  value,
+                  year_prefix = year_prefix
+                )
+              },
               character(1)
             ),
             collapse = ", "
@@ -4599,9 +4622,9 @@ build_page_line_chart_js <- function(
   }
   
   #
-  # The pivot variable is represented by the selected CSV value
-  # columns, so add all unique line columns under the JSON
-  # variable name.
+  # The pivot variable is represented by the selected
+  # CSV value columns, so add all unique line columns
+  # under the corresponding metadata variable name.
   #
   pivot_values <- unique(
     vapply(
@@ -4657,14 +4680,14 @@ build_page_line_chart_js <- function(
     }
   }
   
-  query_block <- if (length(query_entries) == 0) {
+  query_block <- if (
+    length(query_entries) == 0
+  ) {
     
-    c(
-      paste0(
-        "    const ",
-        query_variable,
-        " = {};"
-      )
+    paste0(
+      "    const ",
+      query_variable,
+      " = {};"
     )
     
   } else {
@@ -4739,7 +4762,8 @@ update_page_line_chart_js <- function(
     page_href,
     chart_number,
     matrix,
-    line_chart_js
+    line_chart_js,
+    use_matrix_years = FALSE
 ) {
   
   paths <- page_design_paths(
@@ -4841,6 +4865,28 @@ update_page_line_chart_js <- function(
     character()
   }
   
+  matrix_year_lines <- if (
+    isTRUE(use_matrix_years) &&
+    !isTRUE(needs_update_year_spans)
+  ) {
+    build_matrix_year_variables_js(
+      matrix = matrix
+    )
+  } else {
+    character()
+  }
+  
+  matrix_year_span_lines <- if (
+    isTRUE(use_matrix_years) &&
+    !isTRUE(needs_update_year_spans)
+  ) {
+    build_matrix_year_span_js(
+      matrix = matrix
+    )
+  } else {
+    character()
+  }
+  
   all_chart_markers <- grep(
     "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
     js_lines
@@ -4855,7 +4901,9 @@ update_page_line_chart_js <- function(
     all_chart_markers > chart_marker
   ]
   
-  section_end <- if (length(later_markers) > 0) {
+  section_end <- if (
+    length(later_markers) > 0
+  ) {
     min(later_markers) - 1
   } else {
     region_end - 1
@@ -4869,14 +4917,22 @@ update_page_line_chart_js <- function(
     section
   )
   
+  while (
+    length(section) > 0 &&
+    !nzchar(trimws(section[[length(section)]]))
+  ) {
+    section <- section[-length(section)]
+  }
+  
   replacement_section <- c(
     section,
     "",
     "    // BuildR line chart config start",
     year_update_lines,
+    matrix_year_lines,
+    matrix_year_span_lines,
     line_chart_js,
     "    // BuildR line chart config end",
-    "",
     ""
   )
   
