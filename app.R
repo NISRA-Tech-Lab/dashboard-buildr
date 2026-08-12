@@ -5877,15 +5877,126 @@ server <- function(input, output, session) {
                 return()
               }
               
-              pyramid_chart_js <-
-                build_page_pyramid_chart_js(
-                  chart_number =
-                    current_chart,
-                  matrix =
-                    pyramid_settings$matrix,
-                  settings =
-                    pyramid_settings
+              #
+              # Read the selected matrix so the actual TLIST
+              # variable name can be identified.
+              #
+              calculation_data <- read_card_calculation_data(
+                project_root = folder(),
+                matrix = pyramid_settings$matrix
+              )
+              
+              #
+              # Find the year variable from the matrix metadata.
+              #
+              # This may be called "Year", "Census year",
+              # "Financial year", etc.
+              #
+              year_definitions <- Filter(
+                function(filter_definition) {
+                  isTRUE(
+                    filter_definition$is_year
+                  )
+                },
+                calculation_data$row_filters
+              )
+              
+              if (length(year_definitions) > 0) {
+                
+                pyramid_settings$year_column <-
+                  year_definitions[[1]]$column
+                
+              } else {
+                
+                #
+                # Fall back to matrix_year_values() for datasets
+                # where the year variable was not included in
+                # row_filters, for example where only one year
+                # exists in the CSV.
+                #
+                year_values <- matrix_year_values(
+                  calculation_data
                 )
+                
+                if (
+                  is.null(year_values) ||
+                  is.null(year_values$column) ||
+                  !nzchar(
+                    as.character(
+                      year_values$column
+                    )[1]
+                  )
+                ) {
+                  
+                  showNotification(
+                    paste0(
+                      "Could not identify the year variable for ",
+                      pyramid_settings$matrix,
+                      "."
+                    ),
+                    type = "error"
+                  )
+                  
+                  return()
+                }
+                
+                pyramid_settings$year_column <-
+                  as.character(
+                    year_values$column
+                  )[1]
+              }
+              
+              #
+              # Store the corrected year column back in the
+              # reactive settings object.
+              #
+              page_pyramid_chart_settings[[
+                as.character(
+                  current_chart
+                )
+              ]] <- pyramid_settings
+              
+              #
+              # Read the current page JavaScript so we can
+              # determine whether this matrix needs its own
+              # year variables.
+              #
+              paths <- page_design_paths(
+                folder(),
+                selected_page_design()
+              )
+              
+              js_lines <- readLines(
+                paths$js,
+                warn = FALSE,
+                encoding = "UTF-8"
+              )
+              
+              needs_own_years <- matrix_needs_own_year_variables(
+                project_root = folder(),
+                matrix = pyramid_settings$matrix,
+                js_lines = js_lines
+              )
+              
+              year_prefix <- if (
+                isTRUE(needs_own_years)
+              ) {
+                pyramid_settings$matrix
+              } else {
+                NULL
+              }
+              
+              #
+              # Build the Pyramid JavaScript using the actual
+              # TLIST variable name and, where necessary,
+              # matrix-specific dynamic year variables.
+              #
+              pyramid_chart_js <- build_page_pyramid_chart_js(
+                chart_number = current_chart,
+                matrix = pyramid_settings$matrix,
+                settings = pyramid_settings,
+                year_prefix = year_prefix
+              )
             }
             
             if (chart_type == "table") {
@@ -6200,7 +6311,8 @@ server <- function(input, output, session) {
                     page_href = selected_page_design(),
                     chart_number = current_chart,
                     matrix = pyramid_settings$matrix,
-                    pyramid_chart_js = pyramid_chart_js
+                    pyramid_chart_js = pyramid_chart_js,
+                    use_matrix_years = needs_own_years
                   )
                 }
                 
