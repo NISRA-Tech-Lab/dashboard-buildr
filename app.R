@@ -5789,14 +5789,37 @@ server <- function(input, output, session) {
                 return()
               }
               
+              paths <- page_design_paths(
+                folder(),
+                selected_page_design()
+              )
+              
+              js_lines <- readLines(
+                paths$js,
+                warn = FALSE,
+                encoding = "UTF-8"
+              )
+              
+              needs_own_years <- matrix_needs_own_year_variables(
+                project_root = folder(),
+                matrix = treemap_settings$matrix,
+                js_lines = js_lines
+              )
+              
+              year_prefix <- if (
+                isTRUE(needs_own_years)
+              ) {
+                treemap_settings$matrix
+              } else {
+                NULL
+              }
+              
               treemap_chart_js <-
                 build_page_treemap_chart_js(
-                  chart_number =
-                    current_chart,
-                  matrix =
-                    treemap_settings$matrix,
-                  settings =
-                    treemap_settings
+                  chart_number = current_chart,
+                  matrix = treemap_settings$matrix,
+                  settings = treemap_settings,
+                  year_prefix = year_prefix
                 )
             }
             
@@ -6106,7 +6129,8 @@ server <- function(input, output, session) {
                     page_href = selected_page_design(),
                     chart_number = current_chart,
                     matrix = treemap_settings$matrix,
-                    treemap_chart_js = treemap_chart_js
+                    treemap_chart_js = treemap_chart_js,
+                    use_matrix_years = needs_own_years
                   )
                 }
                 
