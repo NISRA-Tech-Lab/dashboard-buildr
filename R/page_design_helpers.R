@@ -1176,7 +1176,9 @@ update_page_card_value_js <- function(
     project_root,
     page_href,
     card_number,
-    calculation
+    calculation,
+    year_prefix = NULL,
+    use_matrix_years = FALSE
 ) {
   
   paths <- page_design_paths(
