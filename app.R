@@ -5916,15 +5916,37 @@ server <- function(input, output, session) {
                 return()
               }
               
-              table_js <-
-                build_page_table_js(
-                  chart_number =
-                    current_chart,
-                  matrix =
-                    table_settings$matrix,
-                  settings =
-                    table_settings
-                )
+              paths <- page_design_paths(
+                folder(),
+                selected_page_design()
+              )
+              
+              js_lines <- readLines(
+                paths$js,
+                warn = FALSE,
+                encoding = "UTF-8"
+              )
+              
+              needs_own_years <- matrix_needs_own_year_variables(
+                project_root = folder(),
+                matrix = table_settings$matrix,
+                js_lines = js_lines
+              )
+              
+              year_prefix <- if (
+                isTRUE(needs_own_years)
+              ) {
+                table_settings$matrix
+              } else {
+                NULL
+              }
+              
+              table_js <- build_page_table_js(
+                chart_number = current_chart,
+                matrix = table_settings$matrix,
+                settings = table_settings,
+                year_prefix = year_prefix
+              )
             }
             
             if (chart_type == "map") {
@@ -6197,7 +6219,8 @@ server <- function(input, output, session) {
                     page_href = selected_page_design(),
                     chart_number = current_chart,
                     matrix = table_settings$matrix,
-                    table_js = table_js
+                    table_js = table_js,
+                    use_matrix_years = needs_own_years
                   )
                 }
                 
