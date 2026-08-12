@@ -5651,7 +5651,8 @@ page_pie_type_choices <- function() {
 build_page_pie_chart_js <- function(
     chart_number,
     matrix,
-    settings
+    settings,
+    year_prefix = NULL
 ) {
   
   data_variable <- paste0(
@@ -5687,10 +5688,8 @@ build_page_pie_chart_js <- function(
         filter_conditions,
         build_chart_filter_condition(
           column_name = column_name,
-          selected_values =
-            settings$filters[[
-              column_name
-            ]]
+          selected_values = settings$filters[[column_name]],
+          year_prefix = year_prefix
         )
       )
     }
@@ -5827,7 +5826,8 @@ build_page_pie_chart_js <- function(
       ) {
         
         javascript_query_value(
-          values[[1]]
+          values[[1]],
+          year_prefix = year_prefix
         )
         
       } else {
@@ -5837,7 +5837,12 @@ build_page_pie_chart_js <- function(
           paste(
             vapply(
               values,
-              javascript_query_value,
+              function(value) {
+                javascript_query_value(
+                  value,
+                  year_prefix = year_prefix
+                )
+              },
               character(1)
             ),
             collapse = ", "
@@ -5972,7 +5977,8 @@ update_page_pie_chart_js <- function(
     page_href,
     chart_number,
     matrix,
-    pie_chart_js
+    pie_chart_js,
+    use_matrix_years = FALSE
 ) {
   
   paths <- page_design_paths(
@@ -6061,6 +6067,28 @@ update_page_pie_chart_js <- function(
     character()
   }
   
+  matrix_year_lines <- if (
+    isTRUE(use_matrix_years) &&
+    !isTRUE(needs_update_year_spans)
+  ) {
+    build_matrix_year_variables_js(
+      matrix = matrix
+    )
+  } else {
+    character()
+  }
+  
+  matrix_year_span_lines <- if (
+    isTRUE(use_matrix_years) &&
+    !isTRUE(needs_update_year_spans)
+  ) {
+    build_matrix_year_span_js(
+      matrix = matrix
+    )
+  } else {
+    character()
+  }
+  
   all_chart_markers <- grep(
     "^\\s*//\\s*Content for chart\\s+[0-9]+\\s*$",
     js_lines
@@ -6091,14 +6119,22 @@ update_page_pie_chart_js <- function(
     section
   )
   
+  while (
+    length(section) > 0 &&
+    !nzchar(trimws(section[[length(section)]]))
+  ) {
+    section <- section[-length(section)]
+  }
+  
   replacement_section <- c(
     section,
     "",
     "    // BuildR pie chart config start",
     year_update_lines,
+    matrix_year_lines,
+    matrix_year_span_lines,
     pie_chart_js,
     "    // BuildR pie chart config end",
-    "",
     ""
   )
   
