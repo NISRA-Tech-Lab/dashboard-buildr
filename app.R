@@ -5667,10 +5667,36 @@ server <- function(input, output, session) {
                 )
               ]] <- bar_settings
               
+              paths <- page_design_paths(
+                folder(),
+                selected_page_design()
+              )
+              
+              js_lines <- readLines(
+                paths$js,
+                warn = FALSE,
+                encoding = "UTF-8"
+              )
+              
+              needs_own_years <- matrix_needs_own_year_variables(
+                project_root = folder(),
+                matrix = bar_settings$matrix,
+                js_lines = js_lines
+              )
+              
+              year_prefix <- if (
+                isTRUE(needs_own_years)
+              ) {
+                bar_settings$matrix
+              } else {
+                NULL
+              }
+              
               bar_chart_js <- build_page_bar_chart_js(
                 chart_number = current_chart,
                 matrix = bar_settings$matrix,
-                settings = bar_settings
+                settings = bar_settings,
+                year_prefix = year_prefix
               )
             }
             
@@ -6089,7 +6115,8 @@ server <- function(input, output, session) {
                     page_href = selected_page_design(),
                     chart_number = current_chart,
                     matrix = bar_settings$matrix,
-                    bar_chart_js = bar_chart_js
+                    bar_chart_js = bar_chart_js,
+                    use_matrix_years = needs_own_years
                   )
                 }
                 
