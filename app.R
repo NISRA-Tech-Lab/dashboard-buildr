@@ -3167,6 +3167,46 @@ server <- function(input, output, session) {
               return()
             }
             
+            #
+            # Determine whether this card's matrix needs
+            # its own dynamic year variables.
+            #
+            matrix <- stored_calculation$matrix
+            
+            homepage_js_path <- file.path(
+              folder(),
+              "src",
+              "index.js"
+            )
+            
+            if (!file.exists(homepage_js_path)) {
+              showNotification(
+                "src/index.js was not found.",
+                type = "error"
+              )
+              return()
+            }
+            
+            js_lines <- readLines(
+              homepage_js_path,
+              warn = FALSE,
+              encoding = "UTF-8"
+            )
+            
+            needs_own_years <- matrix_needs_own_year_variables(
+              project_root = folder(),
+              matrix = matrix,
+              js_lines = js_lines
+            )
+            
+            year_prefix <- if (
+              isTRUE(needs_own_years)
+            ) {
+              matrix
+            } else {
+              NULL
+            }
+            
             unit <- input[[
               paste0(
                 "card_",
@@ -3215,13 +3255,16 @@ server <- function(input, output, session) {
                   card_number = current_card,
                   top_line = top_line,
                   unit = unit,
-                  bottom_line = bottom_line
+                  bottom_line = bottom_line,
+                  year_prefix = year_prefix
                 )
                 
                 update_homepage_card_value_js(
                   project_root = folder(),
                   card_number = current_card,
-                  calculation = stored_calculation
+                  calculation = stored_calculation,
+                  year_prefix = year_prefix,
+                  use_matrix_years = needs_own_years
                 )
                 
                 update_homepage_card_link(
@@ -4946,6 +4989,37 @@ server <- function(input, output, session) {
               return()
             }
             
+            #
+            # Determine whether this card's matrix needs
+            # its own dynamic year variables.
+            #
+            matrix <- stored_calculation$matrix
+            
+            paths <- page_design_paths(
+              folder(),
+              selected_page_design()
+            )
+            
+            js_lines <- readLines(
+              paths$js,
+              warn = FALSE,
+              encoding = "UTF-8"
+            )
+            
+            needs_own_years <- matrix_needs_own_year_variables(
+              project_root = folder(),
+              matrix = matrix,
+              js_lines = js_lines
+            )
+            
+            year_prefix <- if (
+              isTRUE(needs_own_years)
+            ) {
+              matrix
+            } else {
+              NULL
+            }
+            
             top_line <- input[[
               paste0(
                 "page_card_",
@@ -4980,6 +5054,7 @@ server <- function(input, output, session) {
             
             tryCatch(
               {
+                
                 update_page_card_body(
                   project_root = folder(),
                   page_href = selected_page_design(),
@@ -4994,7 +5069,9 @@ server <- function(input, output, session) {
                   project_root = folder(),
                   page_href = selected_page_design(),
                   card_number = current_card,
-                  calculation = stored_calculation
+                  calculation = stored_calculation,
+                  year_prefix = year_prefix,
+                  use_matrix_years = needs_own_years
                 )
                 
                 page_card_values(

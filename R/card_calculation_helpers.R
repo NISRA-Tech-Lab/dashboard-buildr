@@ -535,6 +535,12 @@ build_matrix_year_variables_js <- function(
   
   c(
     paste0(
+      "    // BuildR ",
+      matrix,
+      " year variables start"
+    ),
+    
+    paste0(
       "    const ",
       matrix,
       "_year_column = ",
@@ -544,6 +550,7 @@ build_matrix_year_variables_js <- function(
     '        .filter(x => x["code"].includes("TLIST"))',
     '        .map(x => x["name"])[0];',
     "",
+    
     paste0(
       "    let ",
       matrix,
@@ -564,6 +571,7 @@ build_matrix_year_variables_js <- function(
       "_year_column]);"
     ),
     "",
+    
     paste0(
       "    ",
       matrix,
@@ -572,6 +580,7 @@ build_matrix_year_variables_js <- function(
       "_years)];"
     ),
     "",
+    
     paste0(
       "    const ",
       matrix,
@@ -579,6 +588,7 @@ build_matrix_year_variables_js <- function(
       matrix,
       "_years[0];"
     ),
+    
     paste0(
       "    const ",
       matrix,
@@ -588,6 +598,7 @@ build_matrix_year_variables_js <- function(
       matrix,
       "_years.length - 1];"
     ),
+    
     paste0(
       "    const ",
       matrix,
@@ -600,6 +611,12 @@ build_matrix_year_variables_js <- function(
       "_years.length - 2] : ",
       matrix,
       "_latest_year;"
+    ),
+    
+    paste0(
+      "    // BuildR ",
+      matrix,
+      " year variables end"
     ),
     ""
   )

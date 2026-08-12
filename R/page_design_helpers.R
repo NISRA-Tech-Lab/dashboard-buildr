@@ -9169,3 +9169,180 @@ build_matrix_year_span_js <- function(
     ""
   )
 }
+
+ensure_matrix_year_variables_after_read_data <- function(
+    js_lines,
+    matrix
+) {
+  
+  read_pattern <- paste0(
+    "^\\s*const\\s+\\[\\s*",
+    matrix,
+    "_data\\s*,\\s*",
+    matrix,
+    "_meta\\s*\\]\\s*=\\s*await\\s+readData\\(",
+    '["\']',
+    matrix,
+    '["\']',
+    "\\);\\s*$"
+  )
+  
+  read_line <- grep(
+    read_pattern,
+    js_lines,
+    perl = TRUE
+  )
+  
+  if (length(read_line) != 1) {
+    stop(
+      paste0(
+        "Could not uniquely identify the readData() call for ",
+        matrix,
+        "."
+      )
+    )
+  }
+  
+  #
+  # Remove any existing managed year-variable block.
+  #
+  year_start_pattern <- paste0(
+    "^\\s*//\\s*BuildR\\s+",
+    matrix,
+    "\\s+year variables start\\s*$"
+  )
+  
+  year_end_pattern <- paste0(
+    "^\\s*//\\s*BuildR\\s+",
+    matrix,
+    "\\s+year variables end\\s*$"
+  )
+  
+  year_start <- grep(
+    year_start_pattern,
+    js_lines,
+    perl = TRUE
+  )
+  
+  year_end <- grep(
+    year_end_pattern,
+    js_lines,
+    perl = TRUE
+  )
+  
+  if (
+    length(year_start) == 1 &&
+    length(year_end) == 1 &&
+    year_end > year_start
+  ) {
+    
+    js_lines <- js_lines[
+      -seq.int(
+        year_start,
+        year_end
+      )
+    ]
+  }
+  
+  #
+  # Remove any existing managed year-span block.
+  #
+  span_start_pattern <- paste0(
+    "^\\s*//\\s*BuildR\\s+",
+    matrix,
+    "\\s+year spans start\\s*$"
+  )
+  
+  span_end_pattern <- paste0(
+    "^\\s*//\\s*BuildR\\s+",
+    matrix,
+    "\\s+year spans end\\s*$"
+  )
+  
+  span_start <- grep(
+    span_start_pattern,
+    js_lines,
+    perl = TRUE
+  )
+  
+  span_end <- grep(
+    span_end_pattern,
+    js_lines,
+    perl = TRUE
+  )
+  
+  if (
+    length(span_start) == 1 &&
+    length(span_end) == 1 &&
+    span_end > span_start
+  ) {
+    
+    js_lines <- js_lines[
+      -seq.int(
+        span_start,
+        span_end
+      )
+    ]
+  }
+  
+  #
+  # Re-find readData() after removals.
+  #
+  read_line <- grep(
+    read_pattern,
+    js_lines,
+    perl = TRUE
+  )
+  
+  if (length(read_line) != 1) {
+    stop(
+      paste0(
+        "Could not re-identify the readData() call for ",
+        matrix,
+        "."
+      )
+    )
+  }
+  
+  year_lines <- build_matrix_year_variables_js(
+    matrix = matrix
+  )
+  
+  span_lines <- c(
+    paste0(
+      "    // BuildR ",
+      matrix,
+      " year spans start"
+    ),
+    build_matrix_year_span_js(
+      matrix = matrix
+    ),
+    paste0(
+      "    // BuildR ",
+      matrix,
+      " year spans end"
+    ),
+    ""
+  )
+  
+  js_lines <- c(
+    js_lines[
+      seq_len(read_line)
+    ],
+    "",
+    year_lines,
+    span_lines,
+    if (read_line < length(js_lines)) {
+      js_lines[
+        seq.int(
+          read_line + 1,
+          length(js_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  js_lines
+}

@@ -1665,8 +1665,10 @@ update_homepage_card_body <- function(
     card_number,
     top_line = "",
     unit = "",
-    bottom_line = ""
+    bottom_line = "",
+    year_prefix = NULL
 ) {
+  
   index_html_path <- file.path(
     project_root,
     "index.html"
@@ -1706,7 +1708,9 @@ update_homepage_card_body <- function(
     )
   }
   
-  card_start <- card_section$card_starts[card_number]
+  card_start <- card_section$card_starts[
+    card_number
+  ]
   
   card_end <- find_closing_div(
     html_lines,
@@ -1734,19 +1738,28 @@ update_homepage_card_body <- function(
     )
   }
   
-  body_start <- body_candidates[1]
+  body_start <- body_candidates[[1]]
   
   body_end <- find_closing_div(
     html_lines,
     body_start
   )
   
-  top_line <- trimws(top_line)
-  unit <- trimws(unit)
-  bottom_line <- trimws(bottom_line)
+  top_line <- trimws(
+    top_line
+  )
+  
+  unit <- trimws(
+    unit
+  )
+  
+  bottom_line <- trimws(
+    bottom_line
+  )
   
   parsed_top_line <- parse_homepage_year_tags(
-    top_line
+    top_line,
+    year_prefix = year_prefix
   )
   
   escaped_unit <- as.character(
@@ -1757,7 +1770,8 @@ update_homepage_card_body <- function(
   )
   
   parsed_bottom_line <- parse_homepage_year_tags(
-    bottom_line
+    bottom_line,
+    year_prefix = year_prefix
   )
   
   opening_line <- sub(
@@ -1828,7 +1842,9 @@ update_homepage_card_body <- function(
   
   updated_html <- c(
     if (body_start > 1) {
-      html_lines[seq_len(body_start - 1)]
+      html_lines[
+        seq_len(body_start - 1)
+      ]
     } else {
       character()
     },
@@ -1923,7 +1939,9 @@ javascript_filter_value <- function(
 update_homepage_card_value_js <- function(
     project_root,
     card_number,
-    calculation
+    calculation,
+    year_prefix = NULL,
+    use_matrix_years = FALSE
 ) {
   
   js_path <- file.path(
@@ -2011,6 +2029,16 @@ update_homepage_card_value_js <- function(
     perl = TRUE
   )
   
+  if (length(current_marker) != 1) {
+    stop(
+      paste0(
+        "Could not identify the JavaScript section for card ",
+        card_number,
+        "."
+      )
+    )
+  }
+  
   matrix_load_pattern <- paste0(
     "^\\s*const\\s+\\[\\s*",
     matrix,
@@ -2032,16 +2060,6 @@ update_homepage_card_value_js <- function(
   matrix_loaded_earlier <- any(
     existing_matrix_loads < current_marker
   )
-  
-  if (length(current_marker) != 1) {
-    stop(
-      paste0(
-        "Could not identify the JavaScript section for card ",
-        card_number,
-        "."
-      )
-    )
-  }
   
   all_markers <- grep(
     "^\\s*//\\s*Content for card\\s+[0-9]+\\s*$",
@@ -2126,6 +2144,13 @@ update_homepage_card_value_js <- function(
     )
   }
   
+  #
+  # Build the card filters.
+  #
+  # Dynamic year tokens use either the global year
+  # variables or matrix-specific variables according
+  # to year_prefix.
+  #
   filter_lines <- character()
   
   if (length(js_filters) > 0) {
@@ -2133,15 +2158,16 @@ update_homepage_card_value_js <- function(
     filter_conditions <- character()
     
     for (column_name in names(js_filters)) {
+      
       filter_definition <- js_filters[[
         column_name
       ]]
       
-      # Supports both the new structured format and older saved values.
       if (
         is.list(filter_definition) &&
         !is.null(filter_definition$values)
       ) {
+        
         selected_values <- as.character(
           filter_definition$values
         )
@@ -2149,7 +2175,9 @@ update_homepage_card_value_js <- function(
         is_year_filter <- isTRUE(
           filter_definition$is_year
         )
+        
       } else {
+        
         selected_values <- as.character(
           filter_definition
         )
@@ -2159,19 +2187,38 @@ update_homepage_card_value_js <- function(
       
       js_values <- vapply(
         selected_values,
-        javascript_filter_value,
-        character(1),
-        is_year = is_year_filter
+        function(value) {
+          
+          if (isTRUE(is_year_filter)) {
+            
+            dynamic_value <- javascript_dynamic_year_value(
+              value = value,
+              year_prefix = year_prefix
+            )
+            
+            if (!is.null(dynamic_value)) {
+              return(dynamic_value)
+            }
+          }
+          
+          javascript_string(
+            value
+          )
+        },
+        character(1)
       )
       
       if (length(js_values) == 1) {
+        
         condition <- paste0(
           "row[",
           javascript_string(column_name),
           "] == ",
-          js_values[1]
+          js_values[[1]]
         )
+        
       } else {
+        
         condition <- paste0(
           "[",
           paste(
@@ -2224,7 +2271,6 @@ update_homepage_card_value_js <- function(
         } else {
           length(filter_definition)
         }
-        
       },
       integer(1)
     ) == 1L
@@ -2250,7 +2296,7 @@ update_homepage_card_value_js <- function(
       paste0(
         "        .map(col => col[",
         selected_column,
-        "]);"
+        "])[0];"
       ),
       ""
     )
@@ -2390,6 +2436,24 @@ update_homepage_card_value_js <- function(
       character()
     }
   )
+  
+  #
+  # If this matrix has a different year range from
+  # the matrix owning updateYearSpans(), ensure its
+  # year-variable declarations are immediately after
+  # its readData() statement.
+  #
+  #
+  # This also relocates an existing block if the
+  # matrix was previously introduced by a chart.
+  #
+  if (isTRUE(use_matrix_years)) {
+    
+    updated_js <- ensure_matrix_year_variables_after_read_data(
+      js_lines = updated_js,
+      matrix = matrix
+    )
+  }
   
   writeLines(
     updated_js,
