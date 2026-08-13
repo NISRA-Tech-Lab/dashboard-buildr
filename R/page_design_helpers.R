@@ -5779,6 +5779,18 @@ build_page_pie_chart_js <- function(
     "_query"
   )
   
+  slice_source <- if (
+    !is.null(settings$slice_source) &&
+    settings$slice_source %in% c(
+      "pivot",
+      "row"
+    )
+  ) {
+    settings$slice_source
+  } else {
+    "pivot"
+  }
+  
   filter_conditions <- character()
   
   if (
@@ -5795,7 +5807,10 @@ build_page_pie_chart_js <- function(
         filter_conditions,
         build_chart_filter_condition(
           column_name = column_name,
-          selected_values = settings$filters[[column_name]],
+          selected_values =
+            settings$filters[[
+              column_name
+            ]],
           year_prefix = year_prefix
         )
       )
@@ -5803,71 +5818,186 @@ build_page_pie_chart_js <- function(
   }
   
   #
-  # Build:
+  # MODE 1:
+  # Pivoted variable provides the slices.
   #
-  # const pie_chart_1_data = MATRIX_data
-  #     .filter(...)
-  #     .map(col => ({
-  #         "Males": col["Males"],
-  #         "Females": col["Females"]
-  #     }))[0];
+  # Example:
   #
-  
-  mapped_values <- vapply(
-    settings$values,
-    function(value_name) {
-      
-      paste0(
-        "            ",
-        javascript_string(value_name),
-        ": col[",
-        javascript_string(value_name),
-        "]"
-      )
-    },
-    character(1)
-  )
-  
-  if (length(filter_conditions) > 0) {
+  #   Slice variable = Farm size
+  #   Values = Very small, Small, Medium, Large
+  #
+  # One filtered row is converted into one object.
+  #
+  if (identical(
+    slice_source,
+    "pivot"
+  )) {
     
-    data_block <- c(
-      paste0(
-        "    const ",
-        pie_data_variable,
-        " = ",
-        data_variable
-      ),
-      paste0(
-        "        .filter(row => ",
-        paste(
-          filter_conditions,
-          collapse = " &&\n                       "
-        ),
-        ")"
-      ),
-      "        .map(col => ({",
-      paste0(
-        mapped_values,
-        collapse = ",\n"
-      ),
-      "        }))[0];"
+    mapped_values <- vapply(
+      settings$values,
+      function(value_name) {
+        
+        paste0(
+          "            ",
+          javascript_string(value_name),
+          ": col[",
+          javascript_string(value_name),
+          "]"
+        )
+      },
+      character(1)
     )
+    
+    if (length(filter_conditions) > 0) {
+      
+      data_block <- c(
+        paste0(
+          "    const ",
+          pie_data_variable,
+          " = ",
+          data_variable
+        ),
+        paste0(
+          "        .filter(row => ",
+          paste(
+            filter_conditions,
+            collapse = " &&\n                       "
+          ),
+          ")"
+        ),
+        "        .map(col => ({",
+        paste0(
+          mapped_values,
+          collapse = ",\n"
+        ),
+        "        }))[0];"
+      )
+      
+    } else {
+      
+      data_block <- c(
+        paste0(
+          "    const ",
+          pie_data_variable,
+          " = ",
+          data_variable
+        ),
+        "        .map(col => ({",
+        paste0(
+          mapped_values,
+          collapse = ",\n"
+        ),
+        "        }))[0];"
+      )
+    }
     
   } else {
     
+    #
+    # MODE 2:
+    # Row-variable values provide the slices.
+    #
+    # Example:
+    #
+    #   Slice variable = Equality group
+    #   Values = Sex - Female, Sex - Male
+    #   Value column = All farms
+    #
+    
+    if (
+      is.null(settings$slice_variable) ||
+      !nzchar(settings$slice_variable)
+    ) {
+      stop(
+        "A row-based pie chart requires a slice variable."
+      )
+    }
+    
+    if (
+      is.null(settings$value_column) ||
+      !nzchar(settings$value_column)
+    ) {
+      stop(
+        "A row-based pie chart requires a value column."
+      )
+    }
+    
+    slice_filter_condition <- build_chart_filter_condition(
+      column_name = settings$slice_variable,
+      selected_values = settings$values,
+      year_prefix = year_prefix
+    )
+    
+    all_conditions <- c(
+      filter_conditions,
+      slice_filter_condition
+    )
+    
+    #
+    # Build an object for pieChart(), preserving the
+    # user's selected slice order.
+    #
+    #
+    # Example output:
+    #
+    # const pie_chart_1_data = {
+    #     "Sex - Female": FARMSIZEEQ_data
+    #         .filter(...)[0]["All farms"],
+    #     "Sex - Male": FARMSIZEEQ_data
+    #         .filter(...)[0]["All farms"]
+    # };
+    #
+    
+    mapped_values <- vapply(
+      settings$values,
+      function(slice_value) {
+        
+        slice_specific_conditions <- c(
+          filter_conditions,
+          build_chart_filter_condition(
+            column_name =
+              settings$slice_variable,
+            selected_values =
+              slice_value,
+            year_prefix =
+              year_prefix
+          )
+        )
+        
+        paste0(
+          "        ",
+          javascript_string(slice_value),
+          ": ",
+          data_variable,
+          "\n",
+          "            .filter(row => ",
+          paste(
+            slice_specific_conditions,
+            collapse =
+              " &&\n                           "
+          ),
+          ")\n",
+          "            .map(col => col[",
+          javascript_string(
+            settings$value_column
+          ),
+          "])[0]"
+        )
+      },
+      character(1)
+    )
+    
     data_block <- c(
       paste0(
         "    const ",
         pie_data_variable,
-        " = ",
-        data_variable
+        " = {"
       ),
-      "        .map(col => ({",
       paste0(
         mapped_values,
         collapse = ",\n"
       ),
-      "        }))[0];"
+      "    };"
     )
   }
   
@@ -5903,7 +6033,9 @@ build_page_pie_chart_js <- function(
     ),
     paste0(
       "        type: ",
-      javascript_string(pie_type)
+      javascript_string(
+        pie_type
+      )
     ),
     "    });"
   )
@@ -5911,7 +6043,6 @@ build_page_pie_chart_js <- function(
   #
   # Download query.
   #
-  
   query_entries <- character()
   
   if (
@@ -5947,7 +6078,8 @@ build_page_pie_chart_js <- function(
               function(value) {
                 javascript_query_value(
                   value,
-                  year_prefix = year_prefix
+                  year_prefix =
+                    year_prefix
                 )
               },
               character(1)
@@ -5973,11 +6105,15 @@ build_page_pie_chart_js <- function(
   }
   
   #
-  # The selected CSV value columns represent values of
-  # the final/pivoted metadata variable.
+  # MODE 1 query:
+  # Selected slice values belong to the pivoted
+  # metadata variable.
   #
-  
   if (
+    identical(
+      slice_source,
+      "pivot"
+    ) &&
     !is.null(settings$pivot_label) &&
     nzchar(settings$pivot_label)
   ) {
@@ -6019,6 +6155,77 @@ build_page_pie_chart_js <- function(
     )
   }
   
+  #
+  # MODE 2 query:
+  #
+  # Selected slice labels belong to a row variable,
+  # while value_column identifies one selected value
+  # of the pivoted metadata variable.
+  #
+  if (identical(
+    slice_source,
+    "row"
+  )) {
+    
+    slice_query_value <- if (
+      length(settings$values) == 1
+    ) {
+      
+      javascript_string(
+        settings$values[[1]]
+      )
+      
+    } else {
+      
+      paste0(
+        "[",
+        paste(
+          vapply(
+            settings$values,
+            javascript_string,
+            character(1)
+          ),
+          collapse = ", "
+        ),
+        "]"
+      )
+    }
+    
+    query_entries <- c(
+      query_entries,
+      paste0(
+        "        ",
+        javascript_string(
+          settings$slice_variable
+        ),
+        ": ",
+        slice_query_value
+      )
+    )
+    
+    if (
+      !is.null(settings$pivot_label) &&
+      nzchar(settings$pivot_label) &&
+      !is.null(settings$value_column) &&
+      nzchar(settings$value_column)
+    ) {
+      
+      query_entries <- c(
+        query_entries,
+        paste0(
+          "        ",
+          javascript_string(
+            settings$pivot_label
+          ),
+          ": ",
+          javascript_string(
+            settings$value_column
+          )
+        )
+      )
+    }
+  }
+  
   query_block <- if (
     length(query_entries) == 0
   ) {
@@ -6055,7 +6262,9 @@ build_page_pie_chart_js <- function(
     ),
     paste0(
       "        ",
-      javascript_string(matrix),
+      javascript_string(
+        matrix
+      ),
       ","
     ),
     paste0(
@@ -6280,6 +6489,74 @@ update_page_pie_chart_js <- function(
     paths$js
   )
 }
+
+pie_slice_variable_choices <- function(
+    calculation_data
+) {
+  
+  variables <- calculation_data$variables
+  
+  if (
+    is.null(variables) ||
+    length(variables) == 0
+  ) {
+    return(character())
+  }
+  
+  valid_variables <- Filter(
+    function(variable) {
+      
+      variable_name <- as.character(
+        variable$name
+      )[1]
+      
+      variable_code <- as.character(
+        variable$code
+      )[1]
+      
+      if (
+        is.na(variable_name) ||
+        !nzchar(trimws(variable_name))
+      ) {
+        return(FALSE)
+      }
+      
+      is_time_variable <- grepl(
+        "^TLIST",
+        variable_code
+      )
+      
+      is_statistic_variable <- identical(
+        tolower(trimws(variable_name)),
+        "statistic"
+      )
+      
+      !is_time_variable &&
+        !is_statistic_variable
+    },
+    variables
+  )
+  
+  if (length(valid_variables) == 0) {
+    return(character())
+  }
+  
+  variable_names <- vapply(
+    valid_variables,
+    function(variable) {
+      as.character(
+        variable$name
+      )[1]
+    },
+    character(1)
+  )
+  
+  stats::setNames(
+    variable_names,
+    variable_names
+  )
+}
+
 
 update_page_chart_canvas_html <- function(
     project_root,

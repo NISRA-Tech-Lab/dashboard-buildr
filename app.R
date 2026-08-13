@@ -4143,6 +4143,8 @@ server <- function(input, output, session) {
   
   pie_chart_data <- reactiveVal(NULL)
   
+  pie_chart_calculation_data <- reactiveVal(NULL)
+  
   page_treemap_chart_settings <- reactiveValues()
   
   active_treemap_chart <- reactiveVal(NULL)
@@ -9307,6 +9309,10 @@ server <- function(input, output, session) {
     calculation_data <-
       modal_data$calculation_data
     
+    pie_chart_calculation_data(
+      calculation_data
+    )
+    
     existing_settings <-
       modal_data$existing_settings
     
@@ -9319,8 +9325,107 @@ server <- function(input, output, session) {
       character()
     }
     
+    existing_slice_variable <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$slice_variable) &&
+      length(existing_settings$slice_variable) > 0 &&
+      !is.na(existing_settings$slice_variable[[1]]) &&
+      nzchar(
+        as.character(
+          existing_settings$slice_variable[[1]]
+        )
+      )
+    ) {
+      as.character(
+        existing_settings$slice_variable[[1]]
+      )
+    } else {
+      calculation_data$pivot_label
+    }
+    
+    tagList(
+      
+      h4("Slices"),
+      
+      tags$p(
+        class = "help-block",
+        paste(
+          "Choose the variable used to define the pie slices,",
+          "then select two or more values."
+        )
+      ),
+      
+      selectInput(
+        inputId = "pie_chart_slice_variable",
+        label = "Slice variable",
+        choices = c(
+          "Select a variable" = "",
+          pie_slice_variable_choices(
+            calculation_data
+          )
+        ),
+        selected = existing_slice_variable,
+        width = "100%"
+      ),
+      
+      uiOutput(
+        "pie_chart_slice_values_ui"
+      ),
+      
+      tags$hr(),
+      
+      h4("Filters"),
+      
+      tags$p(
+        class = "help-block",
+        paste(
+          "Use the filters to identify one row of data.",
+          "Leave a filter blank only when the dataset still",
+          "contains a single matching observation."
+        )
+      ),
+      
+      uiOutput(
+        "pie_chart_filters_ui"
+      )
+    )
+  })
+  
+  ### Pie chart filters UI ####
+  output$pie_chart_filters_ui <- renderUI({
+    
+    calculation_data <- pie_chart_calculation_data()
+    
+    req(calculation_data)
+    
+    slice_variable <- input$pie_chart_slice_variable
+    
+    if (
+      is.null(slice_variable) ||
+      !nzchar(slice_variable)
+    ) {
+      return(NULL)
+    }
+    
+    modal_data <- pie_chart_data()
+    
+    req(modal_data)
+    
+    existing_settings <- modal_data$existing_settings
+    
+    pie_filter_definitions <- Filter(
+      function(filter_definition) {
+        
+        !identical(
+          filter_definition$column,
+          slice_variable
+        )
+      },
+      calculation_data$row_filters
+    )
+    
     filter_inputs <- lapply(
-      calculation_data$row_filters,
+      pie_filter_definitions,
       function(filter_definition) {
         
         existing_filter_values <- character()
@@ -9361,22 +9466,113 @@ server <- function(input, output, session) {
     )
     
     tagList(
+      filter_inputs
+    )
+  })
+  
+  ### Pie chart slices UI ####
+  output$pie_chart_slice_values_ui <- renderUI({
+    
+    req(pie_chart_calculation_data())
+    
+    calculation_data <- pie_chart_calculation_data()
+    
+    slice_variable <- input$pie_chart_slice_variable
+    
+    if (
+      is.null(slice_variable) ||
+      !nzchar(slice_variable)
+    ) {
+      return(NULL)
+    }
+    
+    #
+    # MODE 1:
+    # Slice variable is the pivoted variable.
+    #
+    # Example:
+    #   Slice variable = Farm size
+    #
+    if (identical(
+      slice_variable,
+      calculation_data$pivot_label
+    )) {
       
-      h4("Slices"),
-      
-      tags$p(
-        class = "help-block",
-        paste(
-          "Choose two or more values.",
-          "Each selected value will become one pie slice."
+      return(
+        selectizeInput(
+          inputId = "pie_chart_values",
+          label = calculation_data$pivot_label,
+          choices = calculation_data$pivot_columns,
+          selected = NULL,
+          multiple = TRUE,
+          options = list(
+            plugins = list(
+              "remove_button"
+            ),
+            placeholder = "Select pie slices"
+          ),
+          width = "100%"
         )
-      ),
+      )
+    }
+    
+    #
+    # MODE 2:
+    # Slice variable is a row variable.
+    #
+    # Example:
+    #   Slice variable = Equality group
+    #
+    slice_metadata <- Filter(
+      function(variable) {
+        identical(
+          as.character(
+            variable$name
+          )[1],
+          slice_variable
+        )
+      },
+      calculation_data$variables
+    )
+    
+    if (length(slice_metadata) != 1) {
+      return(
+        tags$div(
+          class = "alert alert-danger",
+          "The selected slice variable could not be identified."
+        )
+      )
+    }
+    
+    slice_values <- unname(
+      unlist(
+        slice_metadata[[1]]$values,
+        use.names = FALSE
+      )
+    )
+    
+    slice_values <- as.character(
+      slice_values
+    )
+    
+    slice_values <- slice_values[
+      !is.na(slice_values) &
+        nzchar(trimws(slice_values))
+    ]
+    
+    tagList(
       
       selectizeInput(
         inputId = "pie_chart_values",
-        label = calculation_data$pivot_label,
-        choices = calculation_data$pivot_columns,
-        selected = existing_values,
+        label = paste0(
+          slice_variable,
+          " values"
+        ),
+        choices = stats::setNames(
+          slice_values,
+          slice_values
+        ),
+        selected = NULL,
         multiple = TRUE,
         options = list(
           plugins = list(
@@ -9387,28 +9583,19 @@ server <- function(input, output, session) {
         width = "100%"
       ),
       
-      tags$hr(),
-      
-      h4("Filters"),
-      
-      tags$p(
-        class = "help-block",
-        paste(
-          "Use the filters to identify one row of data.",
-          "Leave a filter blank only when the dataset still",
-          "contains a single matching observation."
-        )
-      ),
-      
-      if (length(filter_inputs) > 0) {
-        tagList(
-          filter_inputs
-        )
-      } else {
-        tags$em(
-          "No additional filters are available."
-        )
-      }
+      selectInput(
+        inputId = "pie_chart_value_column",
+        label = calculation_data$pivot_label,
+        choices = c(
+          "Select a value" = "",
+          stats::setNames(
+            calculation_data$pivot_columns,
+            calculation_data$pivot_columns
+          )
+        ),
+        selected = "",
+        width = "100%"
+      )
     )
   })
   
@@ -9430,6 +9617,21 @@ server <- function(input, output, session) {
       calculation_data <-
         modal_data$calculation_data
       
+      slice_variable <-
+        input$pie_chart_slice_variable
+      
+      if (
+        is.null(slice_variable) ||
+        !nzchar(slice_variable)
+      ) {
+        showNotification(
+          "Choose the variable used for pie slices.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
       selected_values <-
         input$pie_chart_values
       
@@ -9445,15 +9647,93 @@ server <- function(input, output, session) {
         return()
       }
       
+      selected_values <-
+        as.character(
+          selected_values
+        )
+      
+      #
+      # Determine whether slices come from:
+      #
+      #   1. pivoted CSV columns, e.g. Farm size
+      #   2. values in a row variable, e.g. Equality group
+      #
+      slice_source <- if (
+        identical(
+          slice_variable,
+          calculation_data$pivot_label
+        )
+      ) {
+        "pivot"
+      } else {
+        "row"
+      }
+      
+      #
+      # Row-slice mode requires one pivoted value column
+      # to provide the numeric value for every slice.
+      #
+      value_column <- NULL
+      
+      if (identical(
+        slice_source,
+        "row"
+      )) {
+        
+        value_column <-
+          input$pie_chart_value_column
+        
+        if (
+          is.null(value_column) ||
+          !nzchar(value_column)
+        ) {
+          showNotification(
+            paste0(
+              "Choose a ",
+              calculation_data$pivot_label,
+              " value."
+            ),
+            type = "error"
+          )
+          
+          return()
+        }
+        
+        value_column <-
+          as.character(
+            value_column
+          )[1]
+      }
+      
       selected_filters <- list()
       
       filtered_data <-
         calculation_data$data
       
+      #
+      # Apply the ordinary row filters.
+      #
+      # The selected slice variable is deliberately
+      # excluded in row-slice mode because its selected
+      # values are handled separately below.
+      #
       for (
         filter_definition in
         calculation_data$row_filters
       ) {
+        
+        if (
+          identical(
+            slice_source,
+            "row"
+          ) &&
+          identical(
+            filter_definition$column,
+            slice_variable
+          )
+        ) {
+          next
+        }
         
         input_id <- paste0(
           "pie_chart_filter_",
@@ -9482,15 +9762,15 @@ server <- function(input, output, session) {
         ]] <- selected_filter_values
         
         #
-        # Validate against the current R data.
-        #
-        # Dynamic year tokens need to be converted to concrete
-        # values for this validation only.
+        # Convert dynamic year tokens to concrete values
+        # for server-side validation only.
         #
         validation_values <-
           selected_filter_values
         
-        if (isTRUE(filter_definition$is_year)) {
+        if (isTRUE(
+          filter_definition$is_year
+        )) {
           
           year_values <- unique(
             as.character(
@@ -9506,32 +9786,55 @@ server <- function(input, output, session) {
           ]
           
           numeric_years <- suppressWarnings(
-            as.numeric(year_values)
-          )
-          
-          if (all(!is.na(numeric_years))) {
-            year_values <- year_values[
-              order(numeric_years)
-            ]
-          }
-          
-          validation_values[
-            validation_values == "__LATEST_YEAR__"
-          ] <- tail(
-            year_values,
-            1
-          )
-          
-          validation_values[
-            validation_values == "__FIRST_YEAR__"
-          ] <- head(
-            year_values,
-            1
+            as.numeric(
+              year_values
+            )
           )
           
           if (
-            "__LAST_YEAR__" %in%
-            selected_filter_values
+            length(year_values) > 0 &&
+            all(!is.na(numeric_years))
+          ) {
+            year_values <- year_values[
+              order(
+                numeric_years
+              )
+            ]
+          } else {
+            year_values <- sort(
+              year_values
+            )
+          }
+          
+          if (
+            "__LATEST_YEAR__" %in%
+            validation_values
+          ) {
+            validation_values[
+              validation_values ==
+                "__LATEST_YEAR__"
+            ] <- tail(
+              year_values,
+              1
+            )
+          }
+          
+          if (
+            "__EARLIEST_YEAR__" %in%
+            validation_values
+          ) {
+            validation_values[
+              validation_values ==
+                "__EARLIEST_YEAR__"
+            ] <- head(
+              year_values,
+              1
+            )
+          }
+          
+          if (
+            "__PREVIOUS_YEAR__" %in%
+            validation_values
           ) {
             
             previous_value <- if (
@@ -9546,7 +9849,7 @@ server <- function(input, output, session) {
             
             validation_values[
               validation_values ==
-                "__LAST_YEAR__"
+                "__PREVIOUS_YEAR__"
             ] <- previous_value
           }
         }
@@ -9563,19 +9866,112 @@ server <- function(input, output, session) {
         ]
       }
       
-      if (nrow(filtered_data) != 1) {
+      #
+      # MODE 1:
+      # Existing behaviour.
+      #
+      # Pivoted columns are the slices, therefore the
+      # remaining filters must identify exactly one row.
+      #
+      if (identical(
+        slice_source,
+        "pivot"
+      )) {
         
-        showNotification(
-          paste0(
-            "The current filters return ",
-            nrow(filtered_data),
-            " rows. A pie chart must be based on exactly one row."
-          ),
-          type = "error",
-          duration = NULL
+        if (nrow(filtered_data) != 1) {
+          
+          showNotification(
+            paste0(
+              "The current filters return ",
+              nrow(filtered_data),
+              " rows. A pie chart using ",
+              calculation_data$pivot_label,
+              " slices must be based on exactly one row."
+            ),
+            type = "error",
+            duration = NULL
+          )
+          
+          return()
+        }
+      }
+      
+      #
+      # MODE 2:
+      # Row-variable values are the slices.
+      #
+      # Keep only the selected slice rows.
+      #
+      if (identical(
+        slice_source,
+        "row"
+      )) {
+        
+        filtered_data <- filtered_data[
+          as.character(
+            filtered_data[[
+              slice_variable
+            ]]
+          ) %in%
+            selected_values,
+          ,
+          drop = FALSE
+        ]
+        
+        #
+        # Each selected slice value must identify exactly
+        # one row after all other filters are applied.
+        #
+        slice_counts <- table(
+          factor(
+            as.character(
+              filtered_data[[
+                slice_variable
+              ]]
+            ),
+            levels = selected_values
+          )
         )
         
-        return()
+        if (
+          nrow(filtered_data) !=
+          length(selected_values) ||
+          any(slice_counts != 1)
+        ) {
+          
+          showNotification(
+            paste0(
+              "The current selections do not identify exactly one row ",
+              "for each selected ",
+              slice_variable,
+              " value."
+            ),
+            type = "error",
+            duration = NULL
+          )
+          
+          return()
+        }
+        
+        #
+        # Confirm the selected numeric value column exists.
+        #
+        if (
+          !value_column %in%
+          names(filtered_data)
+        ) {
+          
+          showNotification(
+            paste0(
+              "The selected ",
+              calculation_data$pivot_label,
+              " value was not found in the data."
+            ),
+            type = "error"
+          )
+          
+          return()
+        }
       }
       
       pie_type <- input[[
@@ -9602,16 +9998,28 @@ server <- function(input, output, session) {
         )
       ]] <- list(
         configured = TRUE,
+        
         matrix =
           calculation_data$matrix,
+        
         pivot_label =
           calculation_data$pivot_label,
+        
+        slice_source =
+          slice_source,
+        
+        slice_variable =
+          slice_variable,
+        
         values =
-          as.character(
-            selected_values
-          ),
+          selected_values,
+        
+        value_column =
+          value_column,
+        
         filters =
           selected_filters,
+        
         type =
           pie_type
       )

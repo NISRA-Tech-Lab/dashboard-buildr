@@ -196,8 +196,22 @@ read_card_calculation_data <- function(
     matrix = matrix,
     label = as.character(matrix_metadata$label)[1],
     data = table_data,
+    
+    #
+    # Full matrix variable metadata.
+    #
+    # This allows chart configuration UIs to inspect
+    # every original variable, including variables that
+    # are not exposed as standard row filters.
+    #
+    variables = variables,
+    
     row_filters = row_filters,
-    pivot_label = as.character(pivot_variable$name)[1],
+    
+    pivot_label = as.character(
+      pivot_variable$name
+    )[1],
+    
     pivot_columns = pivot_columns
   )
 }
