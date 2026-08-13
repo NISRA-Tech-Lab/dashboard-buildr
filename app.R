@@ -23,7 +23,8 @@ ui <- fluidPage(
       shinyDirButton(
         id = "folder",
         label = "Browse",
-        title = "Choose a folder"
+        title = "Choose a folder",
+        class = "btn-primary"
       ),
       hidden(
         div(
@@ -9473,9 +9474,15 @@ server <- function(input, output, session) {
   ### Pie chart slices UI ####
   output$pie_chart_slice_values_ui <- renderUI({
     
-    req(pie_chart_calculation_data())
-    
     calculation_data <- pie_chart_calculation_data()
+    
+    req(calculation_data)
+    
+    modal_data <- pie_chart_data()
+    
+    req(modal_data)
+    
+    existing_settings <- modal_data$existing_settings
     
     slice_variable <- input$pie_chart_slice_variable
     
@@ -9484,6 +9491,35 @@ server <- function(input, output, session) {
       !nzchar(slice_variable)
     ) {
       return(NULL)
+    }
+    
+    existing_values <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$values)
+    ) {
+      as.character(
+        existing_settings$values
+      )
+    } else {
+      character()
+    }
+    
+    existing_value_column <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$value_column) &&
+      length(existing_settings$value_column) > 0 &&
+      !is.na(existing_settings$value_column[[1]]) &&
+      nzchar(
+        as.character(
+          existing_settings$value_column[[1]]
+        )
+      )
+    ) {
+      as.character(
+        existing_settings$value_column[[1]]
+      )
+    } else {
+      ""
     }
     
     #
@@ -9498,12 +9534,35 @@ server <- function(input, output, session) {
       calculation_data$pivot_label
     )) {
       
+      #
+      # Only restore saved values when the saved
+      # configuration was also using the pivoted
+      # variable as its slice source.
+      #
+      selected_values <- if (
+        !is.null(existing_settings) &&
+        (
+          is.null(existing_settings$slice_source) ||
+          identical(
+            existing_settings$slice_source,
+            "pivot"
+          )
+        )
+      ) {
+        intersect(
+          existing_values,
+          calculation_data$pivot_columns
+        )
+      } else {
+        character()
+      }
+      
       return(
         selectizeInput(
           inputId = "pie_chart_values",
           label = calculation_data$pivot_label,
           choices = calculation_data$pivot_columns,
-          selected = NULL,
+          selected = selected_values,
           multiple = TRUE,
           options = list(
             plugins = list(
@@ -9560,6 +9619,54 @@ server <- function(input, output, session) {
         nzchar(trimws(slice_values))
     ]
     
+    #
+    # Restore saved row-slice selections only when
+    # the saved slice variable matches the currently
+    # selected one.
+    #
+    selected_values <- if (
+      !is.null(existing_settings) &&
+      identical(
+        existing_settings$slice_source,
+        "row"
+      ) &&
+      !is.null(existing_settings$slice_variable) &&
+      identical(
+        as.character(
+          existing_settings$slice_variable
+        )[1],
+        slice_variable
+      )
+    ) {
+      intersect(
+        existing_values,
+        slice_values
+      )
+    } else {
+      character()
+    }
+    
+    selected_value_column <- if (
+      !is.null(existing_settings) &&
+      identical(
+        existing_settings$slice_source,
+        "row"
+      ) &&
+      !is.null(existing_settings$slice_variable) &&
+      identical(
+        as.character(
+          existing_settings$slice_variable
+        )[1],
+        slice_variable
+      ) &&
+      existing_value_column %in%
+      calculation_data$pivot_columns
+    ) {
+      existing_value_column
+    } else {
+      ""
+    }
+    
     tagList(
       
       selectizeInput(
@@ -9572,7 +9679,7 @@ server <- function(input, output, session) {
           slice_values,
           slice_values
         ),
-        selected = NULL,
+        selected = selected_values,
         multiple = TRUE,
         options = list(
           plugins = list(
@@ -9593,7 +9700,7 @@ server <- function(input, output, session) {
             calculation_data$pivot_columns
           )
         ),
-        selected = "",
+        selected = selected_value_column,
         width = "100%"
       )
     )
