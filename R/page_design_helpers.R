@@ -6867,7 +6867,10 @@ build_page_treemap_chart_js <- function(
         filter_conditions,
         build_chart_filter_condition(
           column_name = column_name,
-          selected_values = settings$filters[[column_name]],
+          selected_values =
+            settings$filters[[
+              column_name
+            ]],
           year_prefix = year_prefix
         )
       )
@@ -6885,8 +6888,9 @@ build_page_treemap_chart_js <- function(
     filter_conditions <- c(
       filter_conditions,
       build_chart_filter_condition(
-        column_name = column_name,
-        selected_values = settings$filters[[column_name]],
+        column_name = settings$categories,
+        selected_values =
+          settings$category_values,
         year_prefix = year_prefix
       )
     )
@@ -7131,7 +7135,9 @@ build_page_treemap_chart_js <- function(
     ),
     paste0(
       "        ",
-      javascript_string(matrix),
+      javascript_string(
+        matrix
+      ),
       ","
     ),
     paste0(

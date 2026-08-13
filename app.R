@@ -198,6 +198,19 @@ ui <- fluidPage(
         ),
         
         tabPanel("User notes",
+                 p("Enter user notes for this dashboard. You can use HTML for paragraphs, links,
+                   lists and other formatting."),
+                 p("User notes should include:"),
+                 HTML('<ul class="mt-2">
+                        <li>When this data was released. Expectations for future updates?</li>
+                        <li>Data source(s)</li>
+                        <li>Where data can be downloaded</li>
+                        <li>Any missing or suppressed data clearly explained</li>
+                        <li>Quality assurance information</li>
+                        <li>Contact information</li>
+                        <li>Link to accessibility statement</li>
+                        <li>Link to publication and data pages</li>
+                    </ul>'),
            textAreaInput(
              "user_notes_html",
              "User notes HTML",
@@ -12906,16 +12919,14 @@ server <- function(input, output, session) {
       page_href = selected_page_design()
     )
     
+    
+    
     tags$div(
-      class = "panel panel-default",
-      
-      tags$div(
-        class = "panel-heading",
-        
-        tags$h4(
-          class = "panel-title",
-          "Info boxes"
-        )
+             
+      tags$hr(),
+     
+      tags$h3(
+        "Info boxes"
       ),
       
       tags$div(
