@@ -2496,6 +2496,10 @@ clear_page_design_files <- function(
     encoding = "UTF-8"
   )
   
+  preserved_info_boxes <- extract_page_info_boxes_js(
+    original_js
+  )
+  
   updated_html <- original_html
   
   chart_count <- length(
@@ -2682,6 +2686,15 @@ clear_page_design_files <- function(
           perl = TRUE
         )
       ]
+      
+      #
+      # Restore the existing info-box content after
+      # clearing cards and charts.
+      #
+      updated_js <- restore_page_info_boxes_js(
+        js_lines = updated_js,
+        info_box_lines = preserved_info_boxes
+      )
       
       writeLines(
         updated_js,
@@ -9347,4 +9360,501 @@ ensure_matrix_year_variables_after_read_data <- function(
   )
   
   js_lines
+}
+
+escape_javascript_template_literal <- function(value) {
+  
+  value <- as.character(value)[1]
+  
+  if (
+    is.na(value) ||
+    !nzchar(value)
+  ) {
+    return("")
+  }
+  
+  #
+  # Protect content inside a JavaScript template literal.
+  #
+  value <- gsub(
+    "\\\\",
+    "\\\\\\\\",
+    value,
+    fixed = TRUE
+  )
+  
+  value <- gsub(
+    "`",
+    "\\`",
+    value,
+    fixed = TRUE
+  )
+  
+  value <- gsub(
+    "${",
+    "\\${",
+    value,
+    fixed = TRUE
+  )
+  
+  value
+}
+
+read_page_info_boxes <- function(
+    project_root,
+    page_href
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$js)) {
+    stop(
+      paste0(
+        paths$js_filename,
+        " was not found."
+      )
+    )
+  }
+  
+  js_lines <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  start_line <- grep(
+    "^\\s*//\\s*BuildR info boxes start\\s*$",
+    js_lines
+  )
+  
+  end_line <- grep(
+    "^\\s*//\\s*BuildR info boxes end\\s*$",
+    js_lines
+  )
+  
+  if (
+    length(start_line) != 1 ||
+    length(end_line) != 1 ||
+    end_line <= start_line
+  ) {
+    
+    return(
+      list(
+        definitions = "",
+        source = "",
+        meaning = ""
+      )
+    )
+  }
+  
+  section <- js_lines[
+    seq.int(
+      start_line + 1,
+      end_line - 1
+    )
+  ]
+  
+  extract_box <- function(
+    marker
+  ) {
+    
+    marker_line <- grep(
+      paste0(
+        "^\\s*//\\s*",
+        marker,
+        "\\s*$"
+      ),
+      section
+    )
+    
+    if (length(marker_line) != 1) {
+      return("")
+    }
+    
+    #
+    # Find the first template-literal opening
+    # after this marker.
+    #
+    search_lines <- section[
+      seq.int(
+        marker_line + 1,
+        length(section)
+      )
+    ]
+    
+    first_tick <- which(
+      grepl(
+        "`",
+        search_lines,
+        fixed = TRUE
+      )
+    )[1]
+    
+    if (is.na(first_tick)) {
+      return("")
+    }
+    
+    absolute_start <-
+      marker_line +
+      first_tick
+    
+    first_line <- section[
+      absolute_start
+    ]
+    
+    #
+    # Handle an empty or single-line literal.
+    #
+    tick_positions <- gregexpr(
+      "(?<!\\\\)`",
+      first_line,
+      perl = TRUE
+    )[[1]]
+    
+    if (length(tick_positions) >= 2) {
+      
+      value <- sub(
+        "^[^`]*`",
+        "",
+        first_line
+      )
+      
+      value <- sub(
+        "`\\s*,?\\s*$",
+        "",
+        value
+      )
+      
+      return(value)
+    }
+    
+    #
+    # Otherwise continue until the closing
+    # unescaped backtick.
+    #
+    content <- sub(
+      "^[^`]*`",
+      "",
+      first_line
+    )
+    
+    line_number <- absolute_start + 1
+    
+    while (
+      line_number <= length(section)
+    ) {
+      
+      current_line <- section[
+        line_number
+      ]
+      
+      if (
+        grepl(
+          "(?<!\\\\)`\\s*,?\\s*$",
+          current_line,
+          perl = TRUE
+        )
+      ) {
+        
+        current_line <- sub(
+          "`\\s*,?\\s*$",
+          "",
+          current_line
+        )
+        
+        content <- c(
+          content,
+          current_line
+        )
+        
+        break
+      }
+      
+      content <- c(
+        content,
+        current_line
+      )
+      
+      line_number <- line_number + 1
+    }
+    
+    paste(
+      content,
+      collapse = "\n"
+    )
+  }
+  
+  list(
+    definitions = extract_box(
+      "DEFINITIONS BOX"
+    ),
+    source = extract_box(
+      "SOURCE BOX"
+    ),
+    meaning = extract_box(
+      "DATA MEANING BOX"
+    )
+  )
+}
+
+update_page_info_boxes_js <- function(
+    project_root,
+    page_href,
+    definitions = "",
+    source = "",
+    meaning = ""
+) {
+  
+  paths <- page_design_paths(
+    project_root,
+    page_href
+  )
+  
+  if (!file.exists(paths$js)) {
+    stop(
+      paste0(
+        paths$js_filename,
+        " was not found."
+      )
+    )
+  }
+  
+  js_lines <- readLines(
+    paths$js,
+    warn = FALSE,
+    encoding = "UTF-8"
+  )
+  
+  start_line <- grep(
+    "^\\s*//\\s*BuildR info boxes start\\s*$",
+    js_lines
+  )
+  
+  end_line <- grep(
+    "^\\s*//\\s*BuildR info boxes end\\s*$",
+    js_lines
+  )
+  
+  if (
+    length(start_line) != 1 ||
+    length(end_line) != 1 ||
+    end_line <= start_line
+  ) {
+    stop(
+      "Could not uniquely identify the info-box JavaScript region."
+    )
+  }
+  
+  definitions <- escape_javascript_template_literal(
+    definitions
+  )
+  
+  source <- escape_javascript_template_literal(
+    source
+  )
+  
+  meaning <- escape_javascript_template_literal(
+    meaning
+  )
+  
+  replacement <- c(
+    "    // BuildR info boxes start",
+    "    populateInfoBoxes(",
+    "        [",
+    '            "Definitions",',
+    '            "Source",',
+    '            "What does the data mean?"',
+    "        ],",
+    "        [",
+    "            // DEFINITIONS BOX",
+    paste0(
+      "            `",
+      definitions,
+      "`,"
+    ),
+    "",
+    "            // SOURCE BOX",
+    paste0(
+      "            `",
+      source,
+      "`,"
+    ),
+    "",
+    "            // DATA MEANING BOX",
+    paste0(
+      "            `",
+      meaning,
+      "`"
+    ),
+    "        ]",
+    "    );",
+    "    // BuildR info boxes end"
+  )
+  
+  updated_js <- c(
+    if (start_line > 1) {
+      js_lines[
+        seq_len(start_line - 1)
+      ]
+    } else {
+      character()
+    },
+    
+    replacement,
+    
+    if (end_line < length(js_lines)) {
+      js_lines[
+        seq.int(
+          end_line + 1,
+          length(js_lines)
+        )
+      ]
+    } else {
+      character()
+    }
+  )
+  
+  writeLines(
+    updated_js,
+    paths$js,
+    useBytes = TRUE
+  )
+  
+  invisible(
+    paths$js
+  )
+}
+
+extract_page_info_boxes_js <- function(
+    js_lines
+) {
+  
+  start_line <- grep(
+    "^\\s*//\\s*BuildR info boxes start\\s*$",
+    js_lines
+  )
+  
+  end_line <- grep(
+    "^\\s*//\\s*BuildR info boxes end\\s*$",
+    js_lines
+  )
+  
+  if (
+    length(start_line) != 1 ||
+    length(end_line) != 1 ||
+    end_line <= start_line
+  ) {
+    return(NULL)
+  }
+  
+  js_lines[
+    seq.int(
+      start_line,
+      end_line
+    )
+  ]
+}
+
+restore_page_info_boxes_js <- function(
+    js_lines,
+    info_box_lines
+) {
+  
+  if (
+    is.null(info_box_lines) ||
+    length(info_box_lines) == 0
+  ) {
+    return(js_lines)
+  }
+  
+  start_line <- grep(
+    "^\\s*//\\s*BuildR info boxes start\\s*$",
+    js_lines
+  )
+  
+  end_line <- grep(
+    "^\\s*//\\s*BuildR info boxes end\\s*$",
+    js_lines
+  )
+  
+  #
+  # The reset page.js should contain the standard
+  # info-box block. Replace that block with the
+  # previously saved contents.
+  #
+  if (
+    length(start_line) == 1 &&
+    length(end_line) == 1 &&
+    end_line > start_line
+  ) {
+    
+    return(
+      c(
+        if (start_line > 1) {
+          js_lines[
+            seq_len(start_line - 1)
+          ]
+        } else {
+          character()
+        },
+        
+        info_box_lines,
+        
+        if (end_line < length(js_lines)) {
+          js_lines[
+            seq.int(
+              end_line + 1,
+              length(js_lines)
+            )
+          ]
+        } else {
+          character()
+        }
+      )
+    )
+  }
+  
+  #
+  # Fallback: if the reset JS somehow does not
+  # contain an info-box block, insert the preserved
+  # block immediately before the end of the
+  # DOMContentLoaded listener.
+  #
+  closing_line <- grep(
+    "^\\s*\\}\\)\\s*;?\\s*$",
+    js_lines
+  )
+  
+  if (length(closing_line) == 0) {
+    stop(
+      "Could not identify the end of the page JavaScript."
+    )
+  }
+  
+  closing_line <- tail(
+    closing_line,
+    1
+  )
+  
+  c(
+    if (closing_line > 1) {
+      js_lines[
+        seq_len(closing_line - 1)
+      ]
+    } else {
+      character()
+    },
+    "",
+    info_box_lines,
+    "",
+    js_lines[
+      seq.int(
+        closing_line,
+        length(js_lines)
+      )
+    ]
+  )
 }

@@ -4357,6 +4357,11 @@ server <- function(input, output, session) {
       tags$div(
         style = "margin-top: 20px;",
         uiOutput("page_chart_editors")
+      ),
+      
+      tags$div(
+        style = "margin-top: 20px;",
+        uiOutput("page_info_boxes_editor")
       )
     )
   })
@@ -12314,6 +12319,148 @@ server <- function(input, output, session) {
     ignoreInit = TRUE
   )
   
+  ### Info box editor ####
+  output$page_info_boxes_editor <- renderUI({
+    
+    req(
+      folder(),
+      selected_page_design()
+    )
+    
+    current_values <- read_page_info_boxes(
+      project_root = folder(),
+      page_href = selected_page_design()
+    )
+    
+    tags$div(
+      class = "panel panel-default",
+      
+      tags$div(
+        class = "panel-heading",
+        
+        tags$h4(
+          class = "panel-title",
+          "Info boxes"
+        )
+      ),
+      
+      tags$div(
+        class = "panel-body",
+        
+        tags$div(
+          class = "alert alert-info",
+          
+          tags$p(
+            style = "margin-bottom: 0;",
+            paste(
+              "Enter the HTML displayed in the three information boxes",
+              "at the bottom of this page."
+            )
+          )
+        ),
+        
+        textAreaInput(
+          inputId = "page_info_definitions",
+          label = "Definitions",
+          value = current_values$definitions,
+          rows = 8,
+          width = "100%",
+          placeholder = "<p>Enter definitions and supporting information...</p>"
+        ),
+        
+        textAreaInput(
+          inputId = "page_info_source",
+          label = "Source",
+          value = current_values$source,
+          rows = 8,
+          width = "100%",
+          placeholder = "<p>Enter source information...</p>"
+        ),
+        
+        textAreaInput(
+          inputId = "page_info_meaning",
+          label = "What does the data mean?",
+          value = current_values$meaning,
+          rows = 8,
+          width = "100%",
+          placeholder = "<p>Enter explanatory information...</p>"
+        ),
+        
+        tags$small(
+          class = "help-block",
+          paste(
+            "HTML is written directly into the populateInfoBoxes()",
+            "template literals in the page JavaScript."
+          )
+        ),
+        
+        actionButton(
+          inputId = "save_page_info_boxes",
+          label = "Save info boxes",
+          icon = icon("save"),
+          class = "btn-primary"
+        )
+      )
+    )
+  })
+  
+  ### Save info box ####
+  observeEvent(
+    input$save_page_info_boxes,
+    {
+      
+      req(
+        folder(),
+        selected_page_design()
+      )
+      
+      definitions <- input$page_info_definitions
+      source <- input$page_info_source
+      meaning <- input$page_info_meaning
+      
+      if (is.null(definitions)) {
+        definitions <- ""
+      }
+      
+      if (is.null(source)) {
+        source <- ""
+      }
+      
+      if (is.null(meaning)) {
+        meaning <- ""
+      }
+      
+      tryCatch(
+        {
+          
+          update_page_info_boxes_js(
+            project_root = folder(),
+            page_href = selected_page_design(),
+            definitions = definitions,
+            source = source,
+            meaning = meaning
+          )
+          
+          showNotification(
+            "Info boxes updated.",
+            type = "message"
+          )
+        },
+        error = function(error) {
+          
+          showNotification(
+            paste(
+              "Info boxes could not be updated:",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = NULL
+          )
+        }
+      )
+    },
+    ignoreInit = TRUE
+  )
   
 }
 
