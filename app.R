@@ -196,7 +196,20 @@ ui <- fluidPage(
           uiOutput("page_design_interface")
         ),
         
-        tabPanel("User notes")
+        tabPanel("User notes",
+           textAreaInput(
+             "user_notes_html",
+             "User notes HTML",
+             value = "",
+             rows = 20,
+             width = "100%"
+           ),
+           
+           actionButton(
+             "save_user_notes",
+             "Save user notes"
+           )         
+        )
       )
     )
   )
@@ -12451,6 +12464,40 @@ server <- function(input, output, session) {
           showNotification(
             paste(
               "Info boxes could not be updated:",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = NULL
+          )
+        }
+      )
+    },
+    ignoreInit = TRUE
+  )
+  
+  ## User notes tab ####
+  observeEvent(
+    input$save_user_notes,
+    {
+      
+      req(folder())
+      
+      tryCatch(
+        {
+          update_user_notes_html(
+            project_root = folder(),
+            user_html = input$user_notes_html
+          )
+          
+          showNotification(
+            "User notes updated.",
+            type = "message"
+          )
+        },
+        error = function(error) {
+          showNotification(
+            paste(
+              "User notes could not be updated:",
               conditionMessage(error)
             ),
             type = "error",
