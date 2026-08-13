@@ -1,0 +1,37 @@
+Package: dashboardBuildR
+Title: Build NISRA Data Dashboards
+Version: 0.1.0
+Authors@R:
+    person(
+        given = "NISRA",
+        family = "Tech Lab",
+        role = c("aut", "cre"),
+        email = "nisra.statistics@finance-ni.gov.uk"
+    )
+Description: A Shiny application for configuring and generating
+    NISRA data dashboards from Data Portal tables.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends:
+    R (>= 4.1.0)
+Imports:
+    shiny,
+    shinyFiles,
+    servr,
+    shinyjs,
+    dplyr,
+    V8,
+    DT,
+    shinythemes,
+    jsonlite,
+    htmltools,
+    httr2,
+    fs,
+    xml2
+Suggests:
+    testthat (>= 3.0.0),
+    devtools,
+    roxygen2
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0
