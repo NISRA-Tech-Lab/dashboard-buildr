@@ -10486,11 +10486,22 @@ server <- function(input, output, session) {
       character(1)
     )
     
+    #
+    # Treemap categories may come either from a
+    # row variable or from the pivoted variable.
+    #
+    category_variable_names <- unique(
+      c(
+        row_variable_names,
+        calculation_data$pivot_label
+      )
+    )
+    
     existing_category <- if (
       !is.null(existing_settings) &&
       !is.null(existing_settings$categories) &&
       existing_settings$categories %in%
-      row_variable_names
+      category_variable_names
     ) {
       existing_settings$categories
     } else {
@@ -10503,44 +10514,79 @@ server <- function(input, output, session) {
     if (
       is.null(selected_category) ||
       !selected_category %in%
-      row_variable_names
+      category_variable_names
     ) {
       selected_category <-
         existing_category
     }
     
-    category_definition <- NULL
-    
-    if (nzchar(selected_category)) {
-      
-      matching_category <- Filter(
-        function(filter_definition) {
-          identical(
-            filter_definition$column,
-            selected_category
-          )
-        },
-        row_filters
+    category_source <- if (
+      nzchar(selected_category) &&
+      identical(
+        selected_category,
+        calculation_data$pivot_label
       )
-      
-      if (length(matching_category) == 1) {
-        category_definition <-
-          matching_category[[1]]
-      }
+    ) {
+      "pivot"
+    } else {
+      "row"
     }
     
-    category_value_choices <- if (
-      !is.null(category_definition)
+    #
+    # Work out the available category values.
+    #
+    if (
+      identical(
+        category_source,
+        "pivot"
+      )
     ) {
-      category_definition$choices
+      
+      category_value_choices <-
+        stats::setNames(
+          calculation_data$pivot_columns,
+          calculation_data$pivot_columns
+        )
+      
     } else {
-      character()
+      
+      category_definition <- NULL
+      
+      if (nzchar(selected_category)) {
+        
+        matching_category <- Filter(
+          function(filter_definition) {
+            identical(
+              filter_definition$column,
+              selected_category
+            )
+          },
+          row_filters
+        )
+        
+        if (length(matching_category) == 1) {
+          category_definition <-
+            matching_category[[1]]
+        }
+      }
+      
+      category_value_choices <- if (
+        !is.null(category_definition)
+      ) {
+        category_definition$choices
+      } else {
+        character()
+      }
     }
     
     existing_category_values <- if (
       !is.null(existing_settings) &&
       !is.null(
         existing_settings$category_values
+      ) &&
+      identical(
+        existing_settings$categories,
+        selected_category
       )
     ) {
       existing_settings$category_values
@@ -10557,10 +10603,23 @@ server <- function(input, output, session) {
       ""
     }
     
+    #
+    # Row-category mode:
+    # remove the selected category variable from
+    # the ordinary filters.
+    #
+    # Pivot-category mode:
+    # retain every row filter because those filters
+    # identify the single source row.
+    #
     ordinary_filters <- Filter(
       function(filter_definition) {
         
         if (
+          identical(
+            category_source,
+            "row"
+          ) &&
           nzchar(selected_category) &&
           identical(
             filter_definition$column,
@@ -10631,8 +10690,8 @@ server <- function(input, output, session) {
         choices = c(
           "Select a variable" = "",
           stats::setNames(
-            row_variable_names,
-            row_variable_names
+            category_variable_names,
+            category_variable_names
           )
         ),
         selected =
@@ -10664,31 +10723,47 @@ server <- function(input, output, session) {
         )
       },
       
-      tags$hr(),
-      
-      h4("Value"),
-      
-      tags$p(
-        class = "help-block",
-        paste(
-          "Choose the numeric value used to determine",
-          "the size of each treemap rectangle."
+      #
+      # Only row-category mode needs a separate
+      # pivoted value column.
+      #
+      if (
+        nzchar(selected_category) &&
+        identical(
+          category_source,
+          "row"
         )
-      ),
-      
-      selectInput(
-        inputId =
-          "treemap_chart_value",
-        label =
-          calculation_data$pivot_label,
-        choices = c(
-          "Select a value" = "",
-          calculation_data$pivot_columns
-        ),
-        selected =
-          existing_value,
-        width = "100%"
-      ),
+      ) {
+        
+        tagList(
+          
+          tags$hr(),
+          
+          h4("Value"),
+          
+          tags$p(
+            class = "help-block",
+            paste(
+              "Choose the numeric value used to determine",
+              "the size of each treemap rectangle."
+            )
+          ),
+          
+          selectInput(
+            inputId =
+              "treemap_chart_value",
+            label =
+              calculation_data$pivot_label,
+            choices = c(
+              "Select a value" = "",
+              calculation_data$pivot_columns
+            ),
+            selected =
+              existing_value,
+            width = "100%"
+          )
+        )
+      },
       
       tags$hr(),
       
@@ -10696,10 +10771,22 @@ server <- function(input, output, session) {
       
       tags$p(
         class = "help-block",
-        paste(
-          "Leave a filter blank to include all values.",
-          "Dynamic year options can be used where available."
-        )
+        if (
+          identical(
+            category_source,
+            "pivot"
+          )
+        ) {
+          paste(
+            "Use the filters to identify the row",
+            "from which the category values should be read."
+          )
+        } else {
+          paste(
+            "Leave a filter blank to include all values.",
+            "Dynamic year options can be used where available."
+          )
+        }
       ),
       
       if (length(filter_inputs) > 0) {
@@ -10713,6 +10800,8 @@ server <- function(input, output, session) {
       }
     )
   })
+  
+  ### Finish treemap configuration ####
   
   ### Finish treemap configuration ####
   
@@ -10747,19 +10836,15 @@ server <- function(input, output, session) {
         return()
       }
       
-      value <-
-        input$treemap_chart_value
-      
-      if (
-        is.null(value) ||
-        !nzchar(value)
-      ) {
-        showNotification(
-          "Choose a value column.",
-          type = "error"
+      category_source <- if (
+        identical(
+          categories,
+          calculation_data$pivot_label
         )
-        
-        return()
+      ) {
+        "pivot"
+      } else {
+        "row"
       }
       
       category_values <-
@@ -10768,6 +10853,44 @@ server <- function(input, output, session) {
       if (is.null(category_values)) {
         category_values <-
           character()
+      }
+      
+      category_values <-
+        as.character(
+          category_values
+        )
+      
+      #
+      # Row-category mode requires one pivoted
+      # numeric value column.
+      #
+      value <- NULL
+      
+      if (
+        identical(
+          category_source,
+          "row"
+        )
+      ) {
+        
+        value <-
+          input$treemap_chart_value
+        
+        if (
+          is.null(value) ||
+          !nzchar(value)
+        ) {
+          showNotification(
+            "Choose a value column.",
+            type = "error"
+          )
+          
+          return()
+        }
+        
+        value <- as.character(
+          value
+        )[1]
       }
       
       selected_filters <- list()
@@ -10780,7 +10903,16 @@ server <- function(input, output, session) {
         column_name <-
           filter_definition$column
         
+        #
+        # In row-category mode the category variable
+        # is controlled by category_values, not by an
+        # additional filter.
+        #
         if (
+          identical(
+            category_source,
+            "row"
+          ) &&
           identical(
             column_name,
             categories
@@ -10811,24 +10943,112 @@ server <- function(input, output, session) {
         }
       }
       
+      #
+      # Pivot-category mode must resolve to exactly
+      # one source row.
+      #
+      if (
+        identical(
+          category_source,
+          "pivot"
+        )
+      ) {
+        
+        filtered_data <-
+          calculation_data$data
+        
+        for (
+          filter_definition in
+          calculation_data$row_filters
+        ) {
+          
+          selected_values <-
+            selected_filters[[
+              filter_definition$column
+            ]]
+          
+          if (
+            is.null(selected_values) ||
+            length(selected_values) == 0
+          ) {
+            next
+          }
+          
+          validation_values <-
+            selected_values
+          
+          if (
+            isTRUE(
+              filter_definition$is_year
+            )
+          ) {
+            
+            validation_values <-
+              resolve_year_filter_values(
+                column_values =
+                  filtered_data[[
+                    filter_definition$column
+                  ]],
+                selected_values =
+                  selected_values
+              )
+          }
+          
+          filtered_data <- filtered_data[
+            as.character(
+              filtered_data[[
+                filter_definition$column
+              ]]
+            ) %in%
+              validation_values,
+            ,
+            drop = FALSE
+          ]
+        }
+        
+        if (nrow(filtered_data) != 1) {
+          
+          showNotification(
+            paste0(
+              "The current filters return ",
+              nrow(filtered_data),
+              " rows. A treemap using ",
+              calculation_data$pivot_label,
+              " as its category must be based on exactly one row."
+            ),
+            type = "error",
+            duration = NULL
+          )
+          
+          return()
+        }
+      }
+      
       page_treemap_chart_settings[[
         as.character(
           chart_number
         )
       ]] <- list(
         configured = TRUE,
+        
         matrix =
           calculation_data$matrix,
+        
         pivot_label =
           calculation_data$pivot_label,
+        
+        category_source =
+          category_source,
+        
         categories =
           categories,
+        
         category_values =
-          as.character(
-            category_values
-          ),
+          category_values,
+        
         value =
           value,
+        
         filters =
           selected_filters
       )

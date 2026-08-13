@@ -6848,10 +6848,22 @@ build_page_treemap_chart_js <- function(
     "_query"
   )
   
+  category_source <- if (
+    !is.null(settings$category_source) &&
+    settings$category_source %in% c(
+      "row",
+      "pivot"
+    )
+  ) {
+    settings$category_source
+  } else {
+    "row"
+  }
+  
   filter_conditions <- character()
   
   #
-  # Ordinary filters
+  # Ordinary filters.
   #
   if (
     !is.null(settings$filters) &&
@@ -6878,59 +6890,193 @@ build_page_treemap_chart_js <- function(
   }
   
   #
-  # Restrict category values if the user selected any.
+  # MODE 1:
+  # Categories come from a row variable.
   #
-  if (
-    !is.null(settings$category_values) &&
-    length(settings$category_values) > 0
-  ) {
+  if (identical(
+    category_source,
+    "row"
+  )) {
     
-    filter_conditions <- c(
-      filter_conditions,
-      build_chart_filter_condition(
-        column_name = settings$categories,
-        selected_values =
-          settings$category_values,
-        year_prefix = year_prefix
+    #
+    # Restrict category values if the user selected any.
+    #
+    if (
+      !is.null(settings$category_values) &&
+      length(settings$category_values) > 0
+    ) {
+      
+      filter_conditions <- c(
+        filter_conditions,
+        build_chart_filter_condition(
+          column_name =
+            settings$categories,
+          selected_values =
+            settings$category_values,
+          year_prefix =
+            year_prefix
+        )
       )
-    )
-  }
-  
-  #
-  # Build filtered data object.
-  #
-  if (length(filter_conditions) > 0) {
+    }
     
-    data_block <- c(
-      paste0(
+    if (length(filter_conditions) > 0) {
+      
+      data_block <- c(
+        paste0(
+          "    const ",
+          treemap_data_variable,
+          " = ",
+          data_variable
+        ),
+        paste0(
+          "        .filter(row => ",
+          paste(
+            filter_conditions,
+            collapse = " &&\n                       "
+          ),
+          ");"
+        )
+      )
+      
+    } else {
+      
+      data_block <- paste0(
         "    const ",
         treemap_data_variable,
         " = ",
-        data_variable
-      ),
-      paste0(
-        "        .filter(row => ",
-        paste(
-          filter_conditions,
-          collapse = " &&\n                       "
-        ),
-        ");"
+        data_variable,
+        ";"
       )
-    )
+    }
+    
+    chart_categories <-
+      settings$categories
+    
+    chart_value <-
+      settings$value
     
   } else {
     
-    data_block <- paste0(
-      "    const ",
-      treemap_data_variable,
-      " = ",
-      data_variable,
-      ";"
+    #
+    # MODE 2:
+    # Categories come from the pivoted variable.
+    #
+    # The filters must identify one source row.
+    #
+    
+    if (
+      is.null(settings$pivot_label) ||
+      !nzchar(settings$pivot_label)
+    ) {
+      stop(
+        "A pivot-category treemap requires a pivot label."
+      )
+    }
+    
+    if (
+      is.null(settings$category_values) ||
+      length(settings$category_values) == 0
+    ) {
+      stop(
+        "Choose at least one pivot category for the treemap."
+      )
+    }
+    
+    #
+    # First build the filtered source-row expression.
+    #
+    source_row_variable <- paste0(
+      "treemap_chart_",
+      chart_number,
+      "_source"
     )
+    
+    if (length(filter_conditions) > 0) {
+      
+      source_block <- c(
+        paste0(
+          "    const ",
+          source_row_variable,
+          " = ",
+          data_variable
+        ),
+        paste0(
+          "        .filter(row => ",
+          paste(
+            filter_conditions,
+            collapse = " &&\n                       "
+          ),
+          ")[0];"
+        ),
+        ""
+      )
+      
+    } else {
+      
+      source_block <- c(
+        paste0(
+          "    const ",
+          source_row_variable,
+          " = ",
+          data_variable,
+          "[0];"
+        ),
+        ""
+      )
+    }
+    
+    #
+    # Reshape the selected pivot columns into objects
+    # that treemapChart() can consume.
+    #
+    mapped_rows <- vapply(
+      settings$category_values,
+      function(category_value) {
+        
+        paste0(
+          "        { ",
+          javascript_string(
+            settings$pivot_label
+          ),
+          ": ",
+          javascript_string(
+            category_value
+          ),
+          ", value: ",
+          source_row_variable,
+          "[",
+          javascript_string(
+            category_value
+          ),
+          "] }"
+        )
+      },
+      character(1)
+    )
+    
+    data_block <- c(
+      source_block,
+      paste0(
+        "    const ",
+        treemap_data_variable,
+        " = ["
+      ),
+      paste0(
+        mapped_rows,
+        collapse = ",\n"
+      ),
+      "    ];"
+    )
+    
+    chart_categories <-
+      settings$pivot_label
+    
+    chart_value <-
+      "value"
   }
   
   #
-  # treemapChart() call
+  # treemapChart() call.
   #
   chart_call <- c(
     "",
@@ -6943,14 +7089,14 @@ build_page_treemap_chart_js <- function(
     paste0(
       "        categories: ",
       javascript_string(
-        settings$categories
+        chart_categories
       ),
       ","
     ),
     paste0(
       "        value: ",
       javascript_string(
-        settings$value
+        chart_value
       ),
       ","
     ),
@@ -6968,7 +7114,7 @@ build_page_treemap_chart_js <- function(
   )
   
   #
-  # Download query
+  # Download query.
   #
   query_entries <- character()
   
@@ -7031,9 +7177,14 @@ build_page_treemap_chart_js <- function(
   }
   
   #
-  # Add selected category values to query.
+  # Row-category mode:
+  # selected category values belong to the row variable.
   #
   if (
+    identical(
+      category_source,
+      "row"
+    ) &&
     !is.null(settings$category_values) &&
     length(settings$category_values) > 0
   ) {
@@ -7076,12 +7227,68 @@ build_page_treemap_chart_js <- function(
   }
   
   #
-  # The selected value column represents one value of
-  # the pivoted metadata variable.
+  # Pivot-category mode:
+  # selected category values belong to the pivot variable.
   #
   if (
+    identical(
+      category_source,
+      "pivot"
+    ) &&
     !is.null(settings$pivot_label) &&
     nzchar(settings$pivot_label)
+  ) {
+    
+    pivot_query_value <- if (
+      length(settings$category_values) == 1
+    ) {
+      
+      javascript_string(
+        settings$category_values[[1]]
+      )
+      
+    } else {
+      
+      paste0(
+        "[",
+        paste(
+          vapply(
+            settings$category_values,
+            javascript_string,
+            character(1)
+          ),
+          collapse = ", "
+        ),
+        "]"
+      )
+    }
+    
+    query_entries <- c(
+      query_entries,
+      paste0(
+        "        ",
+        javascript_string(
+          settings$pivot_label
+        ),
+        ": ",
+        pivot_query_value
+      )
+    )
+  }
+  
+  #
+  # Row-category mode also has a separate selected
+  # value column from the pivoted variable.
+  #
+  if (
+    identical(
+      category_source,
+      "row"
+    ) &&
+    !is.null(settings$pivot_label) &&
+    nzchar(settings$pivot_label) &&
+    !is.null(settings$value) &&
+    nzchar(settings$value)
   ) {
     
     query_entries <- c(
