@@ -2890,7 +2890,7 @@ server <- function(input, output, session) {
             card_number
           )
           
-          is_open <- card_number == 1
+          is_open <- card_number == active_homepage_card_accordion()
           
           tags$div(
             class = "panel panel-default",
@@ -3331,6 +3331,8 @@ server <- function(input, output, session) {
   
   calculation_data <- reactiveVal(NULL)
   
+  active_homepage_card_accordion <- reactiveVal(1L)
+  
   card_calculations <- reactiveValues()
   
   load_calculation_matrix <- function(matrix) {
@@ -3592,6 +3594,10 @@ server <- function(input, output, session) {
               return()
             }
             
+            active_homepage_card_accordion(
+              current_card
+            )
+            
             show_card_calculation_modal(
               current_card
             )
@@ -3627,6 +3633,10 @@ server <- function(input, output, session) {
             ) {
               return()
             }
+            
+            active_page_card_accordion(
+              current_card
+            )
             
             show_card_calculation_modal(
               card_number = current_card,
@@ -4156,6 +4166,9 @@ server <- function(input, output, session) {
   active_map_chart <- reactiveVal(NULL)
   
   map_chart_data <- reactiveVal(NULL)
+  
+  active_page_card_accordion <- reactiveVal(1L)
+  active_page_chart_accordion <- reactiveVal(1L)
   
   table_modal_columns <- reactiveVal(
     list()
@@ -4776,7 +4789,7 @@ server <- function(input, output, session) {
             card_number
           )
           
-          is_open <- card_number == 1
+          is_open <- card_number == active_page_card_accordion()
           
           tags$div(
             class = "panel panel-default",
@@ -5371,7 +5384,7 @@ server <- function(input, output, session) {
             chart_number
           )
           
-          is_open <- chart_number == 1
+          is_open <- chart_number == active_page_chart_accordion()
           
           tags$div(
             class = "panel panel-default",
