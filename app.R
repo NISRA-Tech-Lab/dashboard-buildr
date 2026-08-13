@@ -4170,6 +4170,31 @@ server <- function(input, output, session) {
   active_page_card_accordion <- reactiveVal(1L)
   active_page_chart_accordion <- reactiveVal(1L)
   
+  #### Active chart accordion ####
+  observeEvent(
+    input$active_page_chart_accordion_ui,
+    {
+      
+      chart_number <- as.integer(
+        input$active_page_chart_accordion_ui
+      )
+      
+      if (
+        length(chart_number) != 1 ||
+        is.na(chart_number) ||
+        chart_number < 1 ||
+        chart_number > 3
+      ) {
+        return()
+      }
+      
+      active_page_chart_accordion(
+        chart_number
+      )
+    },
+    ignoreInit = TRUE
+  )
+  
   table_modal_columns <- reactiveVal(
     list()
   )
@@ -5405,6 +5430,14 @@ server <- function(input, output, session) {
                   },
                   
                   href = "javascript:void(0);",
+                  
+                  onclick = paste0(
+                    "Shiny.setInputValue(",
+                    "'active_page_chart_accordion_ui', ",
+                    chart_number,
+                    ", {priority: 'event'}",
+                    ");"
+                  ),
                   
                   `data-toggle` = "collapse",
                   
