@@ -177,22 +177,55 @@ app_server <- function(
   })
 
   # Open dashboard preview in new tab ####
-  observeEvent(input$`launch-dashboard`, {
-    req(folder())
-    
-    port <- 4321
-    
-    servr::daemon_stop()
-    
-    servr::httd(
-      dir = folder(),
-      port = port,
-      daemon = TRUE,
-      browse = FALSE
-    )
-    
-    browseURL(sprintf("http://127.0.0.1:%d", port))
-  })
+  observeEvent(
+    input$`launch-dashboard`,
+    {
+      req(folder())
+      
+      live_server_url <- "http://127.0.0.1:5500/"
+      
+      live_server_response <- try(
+        httr2::request(
+          live_server_url
+        ) |>
+          httr2::req_timeout(1) |>
+          httr2::req_perform(),
+        silent = TRUE
+      )
+      
+      if (
+        !inherits(
+          live_server_response,
+          "try-error"
+        )
+      ) {
+        
+        browseURL(
+          live_server_url
+        )
+        
+        return()
+      }
+      
+      port <- 4321
+      
+      servr::daemon_stop()
+      
+      servr::httd(
+        dir = folder(),
+        port = port,
+        daemon = TRUE,
+        browse = FALSE
+      )
+      
+      browseURL(
+        sprintf(
+          "http://127.0.0.1:%d",
+          port
+        )
+      )
+    }
+  )
   
   # Loaded tables ####
   # Loaded data tables ####
