@@ -11,7 +11,20 @@ app_ui <- function() {
     
     sidebarLayout(
       sidebarPanel(
+        
+        h3("Getting started"),
+        
+        HTML("<p>
+                You will need a local copy of the NISRA Dashboard Template to use this interface</p>
+                <p> See
+                <a href='https://github.com/NISRA-Tech-Lab/dashboard-template#5-getting-started' target='_blank'>this link</a>
+                for help on getting started. 
+             </p>"),
+        
         h3("Choose dashboard directory"),
+        
+        p("Click the button below and navigate to your saved local copy of the Template in order to begin building."),
+        
         shinyDirButton(
           id = "folder",
           label = "Browse",
