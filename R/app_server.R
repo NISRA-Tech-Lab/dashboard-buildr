@@ -2757,6 +2757,66 @@ app_server <- function(
             )
           }
           
+          #
+          # Preserve unsaved editor values if this accordion is
+          # rebuilt after a calculation.
+          #
+          live_top_line <- isolate(
+            input[[
+              paste0(
+                "card_",
+                card_number,
+                "_top_line"
+              )
+            ]]
+          )
+          
+          if (!is.null(live_top_line)) {
+            current_values$top_line <- live_top_line
+          }
+          
+          live_unit <- isolate(
+            input[[
+              paste0(
+                "card_",
+                card_number,
+                "_unit"
+              )
+            ]]
+          )
+          
+          if (!is.null(live_unit)) {
+            current_values$unit <- live_unit
+          }
+          
+          live_bottom_line <- isolate(
+            input[[
+              paste0(
+                "card_",
+                card_number,
+                "_bottom_line"
+              )
+            ]]
+          )
+          
+          if (!is.null(live_bottom_line)) {
+            current_values$bottom_line <- live_bottom_line
+          }
+          
+          live_page_href <- isolate(
+            input[[
+              paste0(
+                "card_",
+                card_number,
+                "_page"
+              )
+            ]]
+          )
+          
+          if (!is.null(live_page_href)) {
+            current_values$page_href <- live_page_href
+          }
+          
           heading_id <- paste0(
             "homepage-card-heading-",
             card_number
@@ -4686,6 +4746,66 @@ app_server <- function(
               decimal_places = pending$decimal_places,
               comma_separator = pending$comma_separator
             )
+          }
+          
+          #
+          # Preserve unsaved editor values if this accordion is
+          # rebuilt after a calculation.
+          #
+          live_top_line <- isolate(
+            input[[
+              paste0(
+                "page_card_",
+                card_number,
+                "_top_line"
+              )
+            ]]
+          )
+          
+          if (!is.null(live_top_line)) {
+            current$top_line <- live_top_line
+          }
+          
+          live_unit <- isolate(
+            input[[
+              paste0(
+                "page_card_",
+                card_number,
+                "_unit"
+              )
+            ]]
+          )
+          
+          if (!is.null(live_unit)) {
+            current$unit <- live_unit
+          }
+          
+          live_bottom_line <- isolate(
+            input[[
+              paste0(
+                "page_card_",
+                card_number,
+                "_bottom_line"
+              )
+            ]]
+          )
+          
+          if (!is.null(live_bottom_line)) {
+            current$bottom_line <- live_bottom_line
+          }
+          
+          live_background <- isolate(
+            input[[
+              paste0(
+                "page_card_",
+                card_number,
+                "_background"
+              )
+            ]]
+          )
+          
+          if (!is.null(live_background)) {
+            current$background <- live_background
           }
           
           collapse_id <- paste0(
