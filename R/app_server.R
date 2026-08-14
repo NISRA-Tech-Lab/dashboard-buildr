@@ -13,7 +13,10 @@ app_server <- function(
 ) {
     
   # Select a folder to open dashboard ####
-  volumes <- c(Home = fs::path_home())
+  
+  volumes <- c(
+    Home = fs::path_home()
+  )
   
   shinyDirChoose(
     input,
@@ -22,21 +25,58 @@ app_server <- function(
     session = session
   )
   
+  #
+  # If Dashboard BuildR was launched from an R project
+  # that looks like a dashboard-template project, use
+  # that project automatically.
+  #
+  startup_folder <- detect_dashboard_project_root(
+    getwd()
+  )
+  
+  selected_folder <- reactiveVal(
+    startup_folder
+  )
+  
+  #
+  # Manual folder selection takes precedence whenever
+  # the user uses the Browse button.
+  #
+  observeEvent(
+    input$folder,
+    {
+      
+      selected_path <- parseDirPath(
+        roots = volumes,
+        selection = input$folder
+      )
+      
+      if (length(selected_path) == 0) {
+        return()
+      }
+      
+      selected_folder(
+        normalizePath(
+          selected_path[[1]],
+          winslash = "/",
+          mustWork = TRUE
+        )
+      )
+    },
+    ignoreInit = TRUE
+  )
+  
   folder <- reactive({
-    req(input$folder)
     
-    selected_path <- parseDirPath(
-      roots = volumes,
-      selection = input$folder
+    selected_path <- selected_folder()
+    
+    req(
+      !is.null(selected_path),
+      length(selected_path) == 1,
+      nzchar(selected_path)
     )
     
-    req(length(selected_path) > 0)
-    
-    normalizePath(
-      selected_path[[1]],
-      winslash = "/",
-      mustWork = TRUE
-    )
+    selected_path
   })
   
   github_origin <- reactive({
@@ -135,12 +175,7 @@ app_server <- function(
   output$path <- renderText({
     folder()
   })
-  
-  observeEvent(input$folder, {
-    shinyjs::show("launch-controls")
-  }, ignoreInit = TRUE)
-  
-  
+
   # Open dashboard preview in new tab ####
   observeEvent(input$`launch-dashboard`, {
     req(folder())
@@ -517,24 +552,38 @@ app_server <- function(
   config_version <- reactiveVal(0)
   
   config_file <- reactive({
-    req(input$folder)
+    
+    selected_path <- folder()
+    
+    req(
+      !is.null(selected_path),
+      nzchar(selected_path)
+    )
     
     # Re-read the file after it has been updated
     config_version()
     
     config_path <- file.path(
-      folder(),
+      selected_path,
       "src",
       "config",
       "config.js"
     )
     
     validate(
-      need(file.exists(config_path), "No config.js file was found.")
+      need(
+        file.exists(config_path),
+        "No config.js file was found."
+      )
     )
     
-    config_text <- readLines(config_path, warn = FALSE) |>
-      paste(collapse = "\n")
+    config_text <- readLines(
+      config_path,
+      warn = FALSE
+    ) |>
+      paste(
+        collapse = "\n"
+      )
     
     config_text <- sub(
       pattern = "^\\s*export\\s+const\\s+config\\s*=",

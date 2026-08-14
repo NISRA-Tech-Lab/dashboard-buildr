@@ -31,19 +31,19 @@ app_ui <- function() {
           title = "Choose a folder",
           class = "btn-primary"
         ),
-        hidden(
-          div(
-            id = "launch-controls",
-            h4("Dashboard location"),
-            verbatimTextOutput("path"),
-            p("Click below to open dashboard in new tab"),
-            actionButton(
-              "launch-dashboard",
-              "Launch dashboard"
-            ),
-            uiOutput("github_origin")
-          )
+        
+        div(
+          id = "launch-controls",
+          h4("Dashboard location"),
+          verbatimTextOutput("path"),
+          p("Click below to open dashboard in new tab"),
+          actionButton(
+            "launch-dashboard",
+            "Launch dashboard"
+          ),
+          uiOutput("github_origin")
         ),
+        
         tags$hr(),
         
         uiOutput("loaded_tables_ui")

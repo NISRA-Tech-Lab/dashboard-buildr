@@ -49,3 +49,59 @@ replace_file_text <- function(
   
   invisible(TRUE)
 }
+
+detect_dashboard_project_root <- function(
+    path = getwd()
+) {
+  
+  path <- normalizePath(
+    path,
+    winslash = "/",
+    mustWork = FALSE
+  )
+  
+  if (!dir.exists(path)) {
+    return(NULL)
+  }
+  
+  rproj_files <- list.files(
+    path,
+    pattern = "\\.Rproj$",
+    full.names = TRUE
+  )
+  
+  required_files <- c(
+    "index.html",
+    file.path(
+      "src",
+      "config",
+      "config.js"
+    ),
+    file.path(
+      "src",
+      "utils",
+      "page-layout.js"
+    )
+  )
+  
+  has_rproj <-
+    length(rproj_files) > 0
+  
+  has_dashboard_files <- all(
+    file.exists(
+      file.path(
+        path,
+        required_files
+      )
+    )
+  )
+  
+  if (
+    isTRUE(has_rproj) &&
+    isTRUE(has_dashboard_files)
+  ) {
+    return(path)
+  }
+  
+  NULL
+}
