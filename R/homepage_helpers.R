@@ -1808,18 +1808,29 @@ update_homepage_card_body <- function(
     ""
   }
   
+  value_line <- if (escaped_unit == "\u00a3") {
+    paste0(
+      content_indent,
+      "    <br>",
+      sub("\u00a3", "&pound;", unit_span),
+      value_span
+    )
+  } else {
+    paste0(
+      content_indent,
+      "    <br>",
+      value_span,
+      unit_span
+    )
+  }
+  
   body_content <- c(
     paste0(
       content_indent,
       "<p>",
       parsed_top_line
     ),
-    paste0(
-      content_indent,
-      "    <br>",
-      value_span,
-      unit_span
-    ),
+    value_line,
     paste0(
       content_indent,
       "    <br>",

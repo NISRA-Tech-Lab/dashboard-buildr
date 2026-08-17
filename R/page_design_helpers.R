@@ -1082,7 +1082,7 @@ update_page_card_body <- function(
   
   escaped_unit <- as.character(
     htmltools::htmlEscape(
-      trimws(unit),
+      unit,
       attribute = FALSE
     )
   )
@@ -1114,6 +1114,22 @@ update_page_card_body <- function(
     ""
   }
   
+  value_line <- if (escaped_unit == "\u00a3") {
+    paste0(
+      content_indent,
+      "    <br>",
+      sub("\u00a3", "&pound;", unit_span),
+      value_span
+    )
+  } else {
+    paste0(
+      content_indent,
+      "    <br>",
+      value_span,
+      unit_span
+    )
+  }
+  
   replacement <- c(
     sub(
       "^(.*?<div\\b[^>]*>).*",
@@ -1126,12 +1142,7 @@ update_page_card_body <- function(
       "<p>",
       parsed_top
     ),
-    paste0(
-      content_indent,
-      "    <br>",
-      value_span,
-      unit_span
-    ),
+    value_line,
     paste0(
       content_indent,
       "    <br>",
