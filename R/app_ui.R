@@ -7,6 +7,15 @@ app_ui <- function() {
   fluidPage(
     theme = shinytheme("cosmo"),
     useShinyjs(),
+    
+    tags$head(
+      tags$link(
+        rel = "icon",
+        type = "image/x-icon",
+        href = "buildr-assets/favicon.ico"
+      )
+    ),
+    
     titlePanel("NISRA Dashboard BuildR"),
     
     sidebarLayout(

@@ -6,6 +6,14 @@
 #' @export
 run_dashboard_buildr <- function() {
   
+  shiny::addResourcePath(
+    "buildr-assets",
+    system.file(
+      "www",
+      package = "dashboardBuildR"
+    )
+  )
+  
   app <- shiny::shinyApp(
     ui = app_ui(),
     server = app_server
