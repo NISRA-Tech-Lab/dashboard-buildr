@@ -1,5 +1,7 @@
 # NISRA Dashboard BuildR
 
+> ### 💀 _Part of the [NISRA Dashboard Skeleton](https://datavis.nisra.gov.uk/techlab/drpvze/dashboard-skeleton.html)_
+
 `dashboardBuildR` is an R package containing a Shiny application for building and editing NISRA data dashboards based on the NISRA dashboard template.
 
 The application provides a user interface for configuring dashboard content, including:
