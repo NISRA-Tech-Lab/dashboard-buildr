@@ -162,35 +162,6 @@ validate_custom_dataset_name <- function(
   )
 }
 
-suggest_custom_variable_type <- function(
-    values
-) {
-  
-  non_missing <- values[
-    !is.na(values)
-  ]
-  
-  if (length(non_missing) == 0) {
-    return("categorical")
-  }
-  
-  #
-  # Numeric columns are suggested as Numeric.
-  #
-  # The user can override this in the classification
-  # modal, which is important for things such as years
-  # or numeric-looking codes.
-  #
-  if (
-    is.numeric(values) ||
-    is.integer(values)
-  ) {
-    return("numeric")
-  }
-  
-  "categorical"
-}
-
 read_custom_csv <- function(
     path
 ) {
@@ -343,4 +314,126 @@ read_custom_csv <- function(
   )
   
   data
+}
+
+suggest_custom_variable_type <- function(
+    values,
+    variable_name = ""
+) {
+  
+  variable_name_lower <- tolower(
+    variable_name
+  )
+  
+  #
+  # Date/time variable names take priority over the
+  # underlying R data type. This prevents numeric years
+  # from being automatically classified as Numeric.
+  #
+  if (
+    grepl(
+      "\\byear\\b",
+      variable_name_lower
+    )
+  ) {
+    return("date")
+  }
+  
+  if (
+    grepl(
+      "\\bquarter\\b",
+      variable_name_lower
+    )
+  ) {
+    return("date")
+  }
+  
+  if (
+    grepl(
+      "\\bmonth\\b",
+      variable_name_lower
+    )
+  ) {
+    return("date")
+  }
+  
+  if (
+    grepl(
+      "\\bweek\\b",
+      variable_name_lower
+    )
+  ) {
+    return("date")
+  }
+  
+  non_missing <- values[
+    !is.na(values)
+  ]
+  
+  if (length(non_missing) == 0) {
+    return("categorical")
+  }
+  
+  if (
+    is.numeric(values) ||
+    is.integer(values)
+  ) {
+    return("numeric")
+  }
+  
+  "categorical"
+}
+
+suggest_custom_date_frequency <- function(
+    variable_name
+) {
+  
+  variable_name_lower <- tolower(
+    trimws(
+      as.character(variable_name)
+    )
+  )
+  
+  if (
+    grepl(
+      "\\byear\\b",
+      variable_name_lower
+    )
+  ) {
+    return("yearly")
+  }
+  
+  if (
+    grepl(
+      "\\bquarter\\b",
+      variable_name_lower
+    )
+  ) {
+    return("quarterly")
+  }
+  
+  if (
+    grepl(
+      "\\bmonth\\b",
+      variable_name_lower
+    )
+  ) {
+    return("monthly")
+  }
+  
+  if (
+    grepl(
+      "\\bweek\\b",
+      variable_name_lower
+    )
+  ) {
+    return("weekly")
+  }
+  
+  #
+  # If the column was manually classified as Date / time
+  # and its name gives us no clue, default to Yearly.
+  # The user can change this in the configuration modal.
+  #
+  "yearly"
 }

@@ -2692,8 +2692,14 @@ app_server <- function(
       }
       
       variable_types <- vapply(
-        csv_data,
-        suggest_custom_variable_type,
+        names(csv_data),
+        function(variable_name) {
+          
+          suggest_custom_variable_type(
+            values = csv_data[[variable_name]],
+            variable_name = variable_name
+          )
+        },
         character(1)
       )
       
@@ -14315,6 +14321,206 @@ app_server <- function(
       removeModal()
       
       show_custom_variable_classification_modal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  observeEvent(
+    input$continue_custom_category_order,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      
+      category_orders <- custom_category_orders()
+      
+      import_data$category_orders <-
+        category_orders
+      
+      pending_custom_import(
+        import_data
+      )
+      
+      removeModal()
+      
+      show_custom_date_configuration_modal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  show_custom_date_configuration_modal <- function() {
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    date_columns <- names(
+      import_data$variable_types[
+        import_data$variable_types == "date"
+      ]
+    )
+    
+    if (length(date_columns) == 0) {
+      showNotification(
+        "No Date / time variables require configuration.",
+        type = "message"
+      )
+      
+      #
+      # Geography stage will go here next.
+      #
+      return()
+    }
+    
+    showModal(
+      modalDialog(
+        title = "Configure date variables",
+        
+        tags$p(
+          paste(
+            "For each date variable, select how frequently",
+            "the data is reported."
+          )
+        ),
+        
+        tagList(
+          lapply(
+            seq_along(date_columns),
+            function(index) {
+              
+              column_name <- date_columns[[index]]
+              
+              tags$div(
+                class = "panel panel-default",
+                
+                tags$div(
+                  class = "panel-heading",
+                  
+                  tags$strong(
+                    column_name
+                  )
+                ),
+                
+                tags$div(
+                  class = "panel-body",
+                  
+                  selectInput(
+                    inputId = paste0(
+                      "custom_date_frequency_",
+                      index
+                    ),
+                    label = "Frequency",
+                    choices = c(
+                      "Yearly" = "yearly",
+                      "Quarterly" = "quarterly",
+                      "Monthly" = "monthly",
+                      "Weekly" = "weekly"
+                    ),
+                    selected = suggest_custom_date_frequency(
+                      column_name
+                    ),
+                    width = "100%"
+                  )
+                )
+              )
+            }
+          )
+        ),
+        
+        footer = tagList(
+          actionButton(
+            inputId = "back_custom_date_configuration",
+            label = "Back"
+          ),
+          
+          actionButton(
+            inputId = "continue_custom_date_configuration",
+            label = "Continue",
+            class = "btn-primary"
+          )
+        ),
+        
+        size = "l",
+        easyClose = FALSE
+      )
+    )
+  }
+  
+  observeEvent(
+    input$continue_custom_date_configuration,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      
+      date_columns <- names(
+        import_data$variable_types[
+          import_data$variable_types == "date"
+        ]
+      )
+      
+      date_frequencies <- vapply(
+        seq_along(
+          date_columns
+        ),
+        function(index) {
+          
+          selected_frequency <- input[[
+            paste0(
+              "custom_date_frequency_",
+              index
+            )
+          ]]
+          
+          if (
+            is.null(selected_frequency) ||
+            !selected_frequency %in% c(
+              "yearly",
+              "quarterly",
+              "monthly",
+              "weekly"
+            )
+          ) {
+            return("")
+          }
+          
+          selected_frequency
+        },
+        character(1)
+      )
+      
+      names(date_frequencies) <-
+        date_columns
+      
+      if (any(!nzchar(
+        date_frequencies
+      ))) {
+        showNotification(
+          "Choose a frequency for every Date / time variable.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      import_data$date_frequencies <-
+        date_frequencies
+      
+      pending_custom_import(
+        import_data
+      )
+      
+      showNotification(
+        "Date / time configuration saved.",
+        type = "message"
+      )
+      
+      #
+      # Next stage:
+      # geography configuration.
+      #
     },
     ignoreInit = TRUE
   )
