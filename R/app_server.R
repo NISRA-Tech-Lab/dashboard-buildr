@@ -704,7 +704,7 @@ app_server <- function(
       "Pages",
       "portal_url",
       "Department",
-      "Data Portal Tables",
+      "Import data",
       "RateIt link"
     )
     
@@ -2357,7 +2357,6 @@ app_server <- function(
   
   ### Import custom CSV ####
   
-  ### Import custom CSV ####
   
   observeEvent(
     input$import_custom_csv,
@@ -2435,6 +2434,14 @@ app_server <- function(
             value = "",
             width = "100%",
             placeholder = "Enter a descriptive title for this dataset"
+          ),
+          
+          dateInput(
+            inputId = "custom_csv_updated",
+            label = "Dataset updated date",
+            value = Sys.Date(),
+            format = "dd/mm/yyyy",
+            width = "100%"
           ),
           
           footer = tagList(
@@ -2536,6 +2543,20 @@ app_server <- function(
       if (!nzchar(dataset_title)) {
         showNotification(
           "Enter a dataset title.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      updated_date <- input$custom_csv_updated
+      
+      if (
+        is.null(updated_date) ||
+        is.na(updated_date)
+      ) {
+        showNotification(
+          "Enter the date the dataset was updated.",
           type = "error"
         )
         
