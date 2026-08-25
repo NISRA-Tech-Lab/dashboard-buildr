@@ -708,8 +708,12 @@ app_server <- function(
       "RateIt link"
     )
     
+    display_config_names <- names(config)[
+      names(config) != "custom"
+    ]
+    
     content <- vapply(
-      names(config),
+      display_config_names,
       function(config_name) {
         
         value <- config[[config_name]]
@@ -767,6 +771,56 @@ app_server <- function(
           return(
             paste(
               matrices,
+              collapse = "<br>"
+            )
+          )
+        }
+        
+        if (config_name == "custom") {
+          
+          custom_tables <- value
+          
+          if (
+            is.null(custom_tables) ||
+            length(custom_tables) == 0
+          ) {
+            return(
+              paste0(
+                "<em>",
+                "No custom CSV tables yet.",
+                "</em>"
+              )
+            )
+          }
+          
+          custom_tables <- as.character(
+            unlist(
+              custom_tables,
+              use.names = FALSE
+            )
+          )
+          
+          custom_tables <- trimws(
+            custom_tables
+          )
+          
+          custom_tables <- custom_tables[
+            nzchar(custom_tables)
+          ]
+          
+          if (length(custom_tables) == 0) {
+            return(
+              paste0(
+                "<em>",
+                "No custom CSV tables yet.",
+                "</em>"
+              )
+            )
+          }
+          
+          return(
+            paste(
+              custom_tables,
               collapse = "<br>"
             )
           )
@@ -2071,36 +2125,85 @@ app_server <- function(
     
     showModal(
       modalDialog(
-        title = "Edit Data Portal tables",
+        title = "Edit dashboard data",
+        
+        #
+        # Data Portal section
+        #
+        h4("NISRA Data Portal"),
         
         tags$p(
-          "Data Portal tables are identified by their matrix name. ",
+          "Add tables from the NISRA Data Portal using their matrix code. ",
           tags$a(
             href = "https://data.nisra.gov.uk/",
             target = "_blank",
             rel = "noopener noreferrer",
             "Browse the NISRA Data Portal"
           ),
-          " and enter matrix codes below."
+          "."
         ),
         
         actionButton(
-          "add_matrix",
-          label = NULL,
+          inputId = "add_matrix",
+          label = "Add Data Portal table",
           icon = icon("plus"),
-          class = "btn-success",
-          title = "Add Data Portal table"
+          class = "btn-success"
         ),
         
-        tags$div(style = "margin-top: 15px;"),
+        tags$div(
+          style = "margin-top: 15px;",
+          DT::DTOutput(
+            "matrix_editor_table"
+          )
+        ),
         
-        DT::DTOutput("matrix_editor_table"),
+        tags$hr(),
+        
+        #
+        # Custom CSV section
+        #
+        h4("Custom CSV data"),
+        
+        tags$p(
+          paste(
+            "Import a prepared CSV containing a single analysis-ready table.",
+            "This should not be a full administrative or survey dataset."
+          )
+        ),
+        
+        tags$ul(
+          tags$li(
+            paste(
+              "Geographical fields should use NISRA geography codes",
+              "rather than place names."
+            )
+          ),
+          tags$li(
+            paste(
+              "Date or time variables should be stored in a single column",
+              "rather than spread across column headings."
+            )
+          )
+        ),
+        
+        actionButton(
+          inputId = "import_custom_csv",
+          label = "Import CSV",
+          icon = icon("file"),
+          class = "btn-default"
+        ),
+        
+        #
+        # We can add a custom-data table here later.
+        #
         
         footer = tagList(
-          modalButton("Cancel"),
+          modalButton(
+            "Cancel"
+          ),
           actionButton(
-            "save_matrices",
-            "Save",
+            inputId = "save_matrices",
+            label = "Save",
             class = "btn-primary"
           )
         ),
@@ -2252,9 +2355,252 @@ app_server <- function(
     
   })
   
+  ### Import custom CSV ####
+  
+  ### Import custom CSV ####
+  
+  observeEvent(
+    input$import_custom_csv,
+    {
+      
+      req(folder())
+      
+      config <- config_file()
+      
+      suggested_name <- suggest_custom_dataset_name(
+        project_root = folder(),
+        config = config
+      )
+      
+      showModal(
+        modalDialog(
+          title = "Import CSV",
+          
+          tags$div(
+            class = "alert alert-info",
+            
+            tags$p(
+              paste(
+                "Choose a prepared CSV containing a single",
+                "analysis-ready table."
+              )
+            ),
+            
+            tags$ul(
+              tags$li(
+                paste(
+                  "Geographical fields should use NISRA geography codes",
+                  "rather than place names."
+                )
+              ),
+              tags$li(
+                paste(
+                  "Date or time variables should be stored in a single column",
+                  "rather than spread across column headings."
+                )
+              )
+            )
+          ),
+          
+          fileInput(
+            inputId = "custom_csv_file",
+            label = "CSV file",
+            accept = c(
+              ".csv",
+              "text/csv",
+              "text/comma-separated-values"
+            ),
+            width = "100%"
+          ),
+          
+          textInput(
+            inputId = "custom_csv_name",
+            label = "Dataset short name",
+            value = suggested_name,
+            width = "100%"
+          ),
+          
+          tags$p(
+            class = "help-block",
+            paste(
+              "Use a short name of no more than 10 characters.",
+              "Only uppercase letters and numbers are allowed.",
+              "This will be used internally in place of a Data Portal matrix code."
+            )
+          ),
+          
+          textInput(
+            inputId = "custom_csv_title",
+            label = "Dataset title",
+            value = "",
+            width = "100%",
+            placeholder = "Enter a descriptive title for this dataset"
+          ),
+          
+          footer = tagList(
+            actionButton(
+              inputId = "cancel_import_custom_csv",
+              label = "Back"
+            ),
+            
+            actionButton(
+              inputId = "continue_import_custom_csv",
+              label = "Continue",
+              class = "btn-primary"
+            )
+          ),
+          
+          size = "l",
+          easyClose = FALSE
+        )
+      )
+    },
+    ignoreInit = TRUE
+  )
+  
   observeEvent(input$cancel_add_matrix, {
     show_matrix_editor()
   })
+  
+  observeEvent(
+    input$cancel_import_custom_csv,
+    {
+      show_matrix_editor()
+    },
+    ignoreInit = TRUE
+  )
+  
+  observeEvent(
+    input$continue_import_custom_csv,
+    {
+      
+      req(folder())
+      
+      uploaded_file <- input$custom_csv_file
+      
+      if (
+        is.null(uploaded_file) ||
+        nrow(uploaded_file) != 1
+      ) {
+        showNotification(
+          "Choose a CSV file to import.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      file_extension <- tolower(
+        tools::file_ext(
+          uploaded_file$name
+        )
+      )
+      
+      if (!identical(
+        file_extension,
+        "csv"
+      )) {
+        showNotification(
+          "The selected file must be a CSV file.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      config <- config_file()
+      
+      name_validation <- validate_custom_dataset_name(
+        dataset_name = input$custom_csv_name,
+        project_root = folder(),
+        config = config
+      )
+      
+      if (!isTRUE(
+        name_validation$valid
+      )) {
+        showNotification(
+          name_validation$message,
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      dataset_title <- trimws(
+        as.character(
+          input$custom_csv_title
+        )
+      )
+      
+      if (!nzchar(dataset_title)) {
+        showNotification(
+          "Enter a dataset title.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      #
+      # Validate that the uploaded CSV can actually be read.
+      #
+      csv_data <- tryCatch(
+        {
+          utils::read.csv(
+            uploaded_file$datapath,
+            check.names = FALSE,
+            stringsAsFactors = FALSE
+          )
+        },
+        error = function(error) {
+          NULL
+        }
+      )
+      
+      if (is.null(csv_data)) {
+        showNotification(
+          "The CSV file could not be read.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      if (ncol(csv_data) < 1) {
+        showNotification(
+          "The CSV file does not contain any columns.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      if (nrow(csv_data) < 1) {
+        showNotification(
+          "The CSV file does not contain any data rows.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      showNotification(
+        paste0(
+          name_validation$name,
+          " is ready for variable classification."
+        ),
+        type = "message"
+      )
+      
+      #
+      # Next step:
+      # store this information temporarily and open
+      # the variable-classification modal.
+      #
+    },
+    ignoreInit = TRUE
+  )
   
   observeEvent(input$confirm_add_matrix, {
     
