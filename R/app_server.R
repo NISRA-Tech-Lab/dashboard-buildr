@@ -13764,8 +13764,13 @@ app_server <- function(
       csv_data
     )
     
-    variable_types <-
+    variable_types <- if (
+      !is.null(import_data$variable_types)
+    ) {
+      import_data$variable_types
+    } else {
       import_data$suggested_types
+    }
     
     tagList(
       
