@@ -234,6 +234,9 @@ app_server <- function(
   
   selected_loaded_table <- reactiveVal(NULL)
   
+  pending_custom_import <- reactiveVal(
+    NULL
+  )
   
   loaded_table_files <- reactive({
     req(folder())
@@ -2214,6 +2217,76 @@ app_server <- function(
     )
   }
   
+  show_custom_variable_classification_modal <- function() {
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    csv_data <- import_data$data
+    
+    showModal(
+      modalDialog(
+        title = paste0(
+          "Classify variables - ",
+          import_data$dataset_name
+        ),
+        
+        tags$p(
+          paste(
+            "Classify each CSV column according to the role",
+            "it will have in the dashboard."
+          )
+        ),
+        
+        tags$div(
+          class = "alert alert-info",
+          
+          tags$p(
+            style = "margin-bottom: 0;",
+            paste(
+              "At least one column must be classified as Numeric.",
+              "All Numeric columns will be grouped together as",
+              'the synthetic "Values" variable.'
+            )
+          )
+        ),
+        
+        uiOutput(
+          "custom_variable_classification_ui"
+        ),
+        
+        footer = tagList(
+          actionButton(
+            inputId = "cancel_custom_variable_classification",
+            label = "Cancel"
+          ),
+          
+          actionButton(
+            inputId = "continue_custom_variable_classification",
+            label = "Continue",
+            class = "btn-primary"
+          )
+        ),
+        
+        size = "l",
+        easyClose = FALSE
+      )
+    )
+  }
+  
+  observeEvent(
+    input$cancel_custom_variable_classification,
+    {
+      
+      pending_custom_import(
+        NULL
+      )
+      
+      show_matrix_editor()
+    },
+    ignoreInit = TRUE
+  )
   
   observeEvent(input$edit_setting, {
     req(input$edit_setting == 4)
@@ -2568,13 +2641,21 @@ app_server <- function(
       #
       csv_data <- tryCatch(
         {
-          utils::read.csv(
-            uploaded_file$datapath,
-            check.names = FALSE,
-            stringsAsFactors = FALSE
+          read_custom_csv(
+            uploaded_file$datapath
           )
         },
         error = function(error) {
+          
+          showNotification(
+            paste(
+              "The CSV file could not be read:",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = NULL
+          )
+          
           NULL
         }
       )
@@ -2606,19 +2687,37 @@ app_server <- function(
         return()
       }
       
-      showNotification(
-        paste0(
-          name_validation$name,
-          " is ready for variable classification."
-        ),
-        type = "message"
+      variable_types <- vapply(
+        csv_data,
+        suggest_custom_variable_type,
+        character(1)
       )
       
-      #
-      # Next step:
-      # store this information temporarily and open
-      # the variable-classification modal.
-      #
+      pending_custom_import(
+        list(
+          original_filename =
+            uploaded_file$name,
+          
+          dataset_name =
+            name_validation$name,
+          
+          dataset_title =
+            dataset_title,
+          
+          updated =
+            as.character(
+              updated_date
+            ),
+          
+          data =
+            csv_data,
+          
+          suggested_types =
+            variable_types
+        )
+      )
+      
+      show_custom_variable_classification_modal()
     },
     ignoreInit = TRUE
   )
@@ -13647,6 +13746,222 @@ app_server <- function(
           )
         }
       )
+    },
+    ignoreInit = TRUE
+  )
+  
+  ## Custom varibale UI ####
+  
+  output$custom_variable_classification_ui <- renderUI({
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    csv_data <- import_data$data
+    
+    variable_names <- names(
+      csv_data
+    )
+    
+    variable_types <-
+      import_data$suggested_types
+    
+    tagList(
+      
+      lapply(
+        seq_along(
+          variable_names
+        ),
+        function(index) {
+          
+          variable_name <-
+            variable_names[[index]]
+          
+          values <-
+            csv_data[[
+              variable_name
+            ]]
+          
+          sample_values <- unique(
+            as.character(
+              values[
+                !is.na(values)
+              ]
+            )
+          )
+          
+          sample_values <- head(
+            sample_values,
+            3
+          )
+          
+          sample_text <- if (
+            length(sample_values) > 0
+          ) {
+            paste(
+              sample_values,
+              collapse = ", "
+            )
+          } else {
+            "No non-missing values"
+          }
+          
+          tags$div(
+            class = "well well-sm",
+            
+            fluidRow(
+              
+              column(
+                width = 7,
+                
+                tags$strong(
+                  variable_name
+                ),
+                
+                tags$div(
+                  class = "help-block",
+                  paste0(
+                    "Example values: ",
+                    sample_text
+                  )
+                )
+              ),
+              
+              column(
+                width = 5,
+                
+                selectInput(
+                  inputId = paste0(
+                    "custom_variable_type_",
+                    index
+                  ),
+                  label = "Type",
+                  choices = c(
+                    "Categorical" =
+                      "categorical",
+                    "Geography" =
+                      "geography",
+                    "Date / time" =
+                      "date",
+                    "Numeric" =
+                      "numeric"
+                  ),
+                  selected =
+                    variable_types[[
+                      variable_name
+                    ]],
+                  width = "100%"
+                )
+              )
+            )
+          )
+        }
+      )
+    )
+  })
+  
+  observeEvent(
+    input$continue_custom_variable_classification,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      
+      variable_names <- names(
+        import_data$data
+      )
+      
+      selected_types <- vapply(
+        seq_along(
+          variable_names
+        ),
+        function(index) {
+          
+          selected_type <- input[[
+            paste0(
+              "custom_variable_type_",
+              index
+            )
+          ]]
+          
+          if (
+            is.null(selected_type) ||
+            !selected_type %in% c(
+              "categorical",
+              "geography",
+              "date",
+              "numeric"
+            )
+          ) {
+            return("")
+          }
+          
+          selected_type
+        },
+        character(1)
+      )
+      
+      names(selected_types) <-
+        variable_names
+      
+      if (any(!nzchar(
+        selected_types
+      ))) {
+        showNotification(
+          "Classify every variable before continuing.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      numeric_columns <- names(
+        selected_types[
+          selected_types == "numeric"
+        ]
+      )
+      
+      if (length(numeric_columns) == 0) {
+        showNotification(
+          paste(
+            "At least one variable must be classified as Numeric.",
+            "Numeric variables contain the values used in dashboard calculations."
+          ),
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      import_data$variable_types <-
+        selected_types
+      
+      import_data$numeric_columns <-
+        numeric_columns
+      
+      pending_custom_import(
+        import_data
+      )
+      
+      showNotification(
+        paste0(
+          length(numeric_columns),
+          if (
+            length(numeric_columns) == 1
+          ) {
+            " numeric column will be grouped under Values."
+          } else {
+            " numeric columns will be grouped under Values."
+          }
+        ),
+        type = "message"
+      )
+      
+      #
+      # Next stage goes here.
+      #
     },
     ignoreInit = TRUE
   )
