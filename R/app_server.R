@@ -238,6 +238,10 @@ app_server <- function(
     NULL
   )
   
+  custom_category_orders <- reactiveVal(
+    list()
+  )
+  
   loaded_table_files <- reactive({
     req(folder())
     
@@ -13964,9 +13968,353 @@ app_server <- function(
         type = "message"
       )
       
-      #
-      # Next stage goes here.
-      #
+      categorical_columns <- names(
+        selected_types[
+          selected_types == "categorical"
+        ]
+      )
+      
+      category_orders <- custom_category_orders()
+      
+      for (column_name in categorical_columns) {
+        
+        if (is.null(category_orders[[column_name]])) {
+          
+          values <- as.character(
+            import_data$data[[column_name]]
+          )
+          
+          values <- values[
+            !is.na(values) &
+              nzchar(trimws(values))
+          ]
+          
+          category_orders[[column_name]] <- unique(
+            values
+          )
+        }
+      }
+      
+      category_orders <- category_orders[
+        names(category_orders) %in%
+          categorical_columns
+      ]
+      
+      custom_category_orders(
+        category_orders
+      )
+      
+      show_custom_category_order_modal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  show_custom_category_order_modal <- function() {
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    categorical_columns <- names(
+      import_data$variable_types[
+        import_data$variable_types == "categorical"
+      ]
+    )
+    
+    if (length(categorical_columns) == 0) {
+      showNotification(
+        "No categorical variables require ordering.",
+        type = "message"
+      )
+      
+      return()
+    }
+    
+    showModal(
+      modalDialog(
+        title = "Order categorical values",
+        
+        tags$p(
+          paste(
+            "Set the order in which categorical values should",
+            "appear in filters, charts and metadata."
+          )
+        ),
+        
+        tags$p(
+          class = "help-block",
+          paste(
+            "Values initially appear in the order in which",
+            "they first occur in the CSV."
+          )
+        ),
+        
+        uiOutput(
+          "custom_category_order_ui"
+        ),
+        
+        footer = tagList(
+          actionButton(
+            inputId = "back_custom_category_order",
+            label = "Back"
+          ),
+          
+          actionButton(
+            inputId = "continue_custom_category_order",
+            label = "Continue",
+            class = "btn-primary"
+          )
+        ),
+        
+        size = "l",
+        easyClose = FALSE
+      )
+    )
+  }
+  
+  output$custom_category_order_ui <- renderUI({
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    category_orders <- custom_category_orders()
+    
+    categorical_columns <- names(
+      import_data$variable_types[
+        import_data$variable_types == "categorical"
+      ]
+    )
+    
+    tagList(
+      lapply(
+        categorical_columns,
+        function(column_name) {
+          
+          values <- category_orders[[
+            column_name
+          ]]
+          
+          tags$div(
+            class = "panel panel-default",
+            
+            tags$div(
+              class = "panel-heading",
+              
+              tags$strong(
+                column_name
+              )
+            ),
+            
+            tags$div(
+              class = "panel-body",
+              
+              lapply(
+                seq_along(values),
+                function(index) {
+                  
+                  fluidRow(
+                    
+                    column(
+                      width = 2,
+                      
+                      tags$strong(
+                        index
+                      )
+                    ),
+                    
+                    column(
+                      width = 7,
+                      
+                      tags$span(
+                        values[[index]]
+                      )
+                    ),
+                    
+                    column(
+                      width = 3,
+                      
+                      actionButton(
+                        inputId = paste0(
+                          "custom_category_up_",
+                          make.names(
+                            column_name
+                          ),
+                          "_",
+                          index
+                        ),
+                        label = NULL,
+                        icon = icon(
+                          "arrow-up"
+                        ),
+                        class = "btn-default btn-sm",
+                        disabled = index == 1
+                      ),
+                      
+                      actionButton(
+                        inputId = paste0(
+                          "custom_category_down_",
+                          make.names(
+                            column_name
+                          ),
+                          "_",
+                          index
+                        ),
+                        label = NULL,
+                        icon = icon(
+                          "arrow-down"
+                        ),
+                        class = "btn-default btn-sm",
+                        disabled =
+                          index == length(values)
+                      )
+                    )
+                  )
+                }
+              )
+            )
+          )
+        }
+      )
+    )
+  })
+  
+  observe({
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    category_orders <- custom_category_orders()
+    
+    categorical_columns <- names(
+      import_data$variable_types[
+        import_data$variable_types == "categorical"
+      ]
+    )
+    
+    for (column_name in categorical_columns) {
+      
+      values <- category_orders[[
+        column_name
+      ]]
+      
+      for (index in seq_along(values)) {
+        
+        local({
+          
+          current_column <- column_name
+          current_index <- index
+          
+          safe_column <- make.names(
+            current_column
+          )
+          
+          up_id <- paste0(
+            "custom_category_up_",
+            safe_column,
+            "_",
+            current_index
+          )
+          
+          down_id <- paste0(
+            "custom_category_down_",
+            safe_column,
+            "_",
+            current_index
+          )
+          
+          observeEvent(
+            input[[up_id]],
+            {
+              
+              if (current_index <= 1) {
+                return()
+              }
+              
+              orders <- custom_category_orders()
+              
+              current_values <- orders[[
+                current_column
+              ]]
+              
+              swap_index <- current_index - 1
+              
+              current_values[
+                c(
+                  swap_index,
+                  current_index
+                )
+              ] <- current_values[
+                c(
+                  current_index,
+                  swap_index
+                )
+              ]
+              
+              orders[[
+                current_column
+              ]] <- current_values
+              
+              custom_category_orders(
+                orders
+              )
+            },
+            ignoreInit = TRUE
+          )
+          
+          observeEvent(
+            input[[down_id]],
+            {
+              
+              orders <- custom_category_orders()
+              
+              current_values <- orders[[
+                current_column
+              ]]
+              
+              if (
+                current_index >=
+                length(current_values)
+              ) {
+                return()
+              }
+              
+              swap_index <- current_index + 1
+              
+              current_values[
+                c(
+                  current_index,
+                  swap_index
+                )
+              ] <- current_values[
+                c(
+                  swap_index,
+                  current_index
+                )
+              ]
+              
+              orders[[
+                current_column
+              ]] <- current_values
+              
+              custom_category_orders(
+                orders
+              )
+            },
+            ignoreInit = TRUE
+          )
+        })
+      }
+    }
+  })
+  
+  observeEvent(
+    input$back_custom_category_order,
+    {
+      removeModal()
+      
+      show_custom_variable_classification_modal()
     },
     ignoreInit = TRUE
   )
