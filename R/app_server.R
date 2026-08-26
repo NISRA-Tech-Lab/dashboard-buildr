@@ -14028,11 +14028,7 @@ app_server <- function(
     )
     
     if (length(categorical_columns) == 0) {
-      showNotification(
-        "No categorical variables require ordering.",
-        type = "message"
-      )
-      
+      show_custom_date_configuration_modal()
       return()
     }
     
@@ -14362,14 +14358,7 @@ app_server <- function(
     )
     
     if (length(date_columns) == 0) {
-      showNotification(
-        "No Date / time variables require configuration.",
-        type = "message"
-      )
-      
-      #
-      # Geography stage will go here next.
-      #
+      show_custom_geography_configuration_modal()
       return()
     }
     
@@ -14517,12 +14506,101 @@ app_server <- function(
         type = "message"
       )
       
-      #
-      # Next stage:
-      # geography configuration.
-      #
+      removeModal()
+      
+      show_custom_geography_configuration_modal()
     },
     ignoreInit = TRUE
   )
+  
+  show_custom_geography_configuration_modal <- function() {
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    geography_columns <- names(
+      import_data$variable_types[
+        import_data$variable_types == "geography"
+      ]
+    )
+    
+    if (length(geography_columns) == 0) {
+      showNotification(
+        "No geography variables require configuration.",
+        type = "message"
+      )
+      
+      #
+      # Next stage will follow here later.
+      #
+      return()
+    }
+    
+    showModal(
+      modalDialog(
+        title = "Configure geography variables",
+        
+        tags$p(
+          paste(
+            "For each geography variable, select the",
+            "geography type represented by the codes in the CSV."
+          )
+        ),
+        
+        tagList(
+          lapply(
+            seq_along(geography_columns),
+            function(index) {
+              
+              column_name <- geography_columns[[index]]
+              
+              tags$div(
+                class = "panel panel-default",
+                
+                tags$div(
+                  class = "panel-heading",
+                  
+                  tags$strong(
+                    column_name
+                  )
+                ),
+                
+                tags$div(
+                  class = "panel-body",
+                  
+                  selectInput(
+                    inputId = paste0(
+                      "custom_geography_type_",
+                      index
+                    ),
+                    label = "Geography type",
+                    choices = custom_geography_choices(),
+                    width = "100%"
+                  )
+                )
+              )
+            }
+          )
+        ),
+        
+        footer = tagList(
+          actionButton(
+            inputId = "back_custom_geography_configuration",
+            label = "Back"
+          ),
+          
+          actionButton(
+            inputId = "continue_custom_geography_configuration",
+            label = "Continue",
+            class = "btn-primary"
+          )
+        ),
+        
+        size = "l",
+        easyClose = FALSE
+      )
+    )
+  }
   
 }

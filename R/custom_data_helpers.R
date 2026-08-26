@@ -501,3 +501,13 @@ read_custom_geography_lookup <- function() {
   
   lookup
 }
+
+custom_geography_choices <- function() {
+  
+  c(
+    "Assembly Area" = "AA",
+    "Assembly Area (2024)" = "AA2024",
+    "Local Government District" = "LGD2014",
+    "Health and Social Care Trust" = "HSCT"
+  )
+}
