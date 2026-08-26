@@ -242,6 +242,8 @@ app_server <- function(
     list()
   )
   
+  custom_table_pending_delete <- reactiveVal(NULL)
+  
   loaded_table_files <- reactive({
     req(folder())
     
@@ -765,20 +767,56 @@ app_server <- function(
             )
           ]
           
-          if (length(matrices) == 0) {
-            return(
-              paste0(
-                "<em>",
-                "No Data Portal tables yet.",
-                "</em>"
+          custom_tables <- if (
+            !is.null(config$custom)
+          ) {
+            as.character(
+              unlist(
+                config$custom,
+                use.names = FALSE
               )
             )
+          } else {
+            character()
           }
           
-          return(
+          custom_tables <- trimws(
+            custom_tables
+          )
+          
+          custom_tables <- custom_tables[
+            nzchar(custom_tables)
+          ]
+          
+          portal_text <- if (
+            length(matrices) > 0
+          ) {
             paste(
               matrices,
               collapse = "<br>"
+            )
+          } else {
+            "<em>No Data Portal tables yet.</em>"
+          }
+          
+          custom_text <- if (
+            length(custom_tables) > 0
+          ) {
+            paste0(
+              "<br><br><strong>Custom CSV tables</strong><br>",
+              paste(
+                custom_tables,
+                collapse = "<br>"
+              )
+            )
+          } else {
+            ""
+          }
+          
+          return(
+            paste0(
+              portal_text,
+              custom_text
             )
           )
         }
@@ -2200,9 +2238,7 @@ app_server <- function(
           class = "btn-default"
         ),
         
-        #
-        # We can add a custom-data table here later.
-        #
+        DT::DTOutput("custom_editor_table"),
         
         footer = tagList(
           modalButton(
@@ -2220,6 +2256,456 @@ app_server <- function(
       )
     )
   }
+  
+  output$custom_editor_table <- DT::renderDT({
+    
+    config <- config_file()
+    
+    custom_tables <- if (
+      !is.null(config$custom)
+    ) {
+      as.character(
+        unlist(
+          config$custom,
+          use.names = FALSE
+        )
+      )
+    } else {
+      character()
+    }
+    
+    custom_tables <- trimws(
+      custom_tables
+    )
+    
+    custom_tables <- custom_tables[
+      nzchar(custom_tables)
+    ]
+    
+    if (length(custom_tables) == 0) {
+      
+      display <- data.frame(
+        `Custom CSV table` = paste0(
+          "<em>",
+          "No custom CSV tables yet.",
+          "</em>"
+        ),
+        Actions = "",
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+      
+    } else {
+      
+      display <- data.frame(
+        `Custom CSV table` = custom_tables,
+        
+        Actions = vapply(
+          seq_along(custom_tables),
+          function(i) {
+            
+            sprintf(
+              paste0(
+                '<button class="btn btn-danger btn-sm" ',
+                'title="Delete" ',
+                'onclick="Shiny.setInputValue(',
+                '\'delete_custom_table\', %d, ',
+                '{priority:\'event\'})">',
+                '<i class="fa fa-trash"></i>',
+                '</button>'
+              ),
+              i
+            )
+          },
+          character(1)
+        ),
+        
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+    }
+    
+    DT::datatable(
+      display,
+      escape = FALSE,
+      rownames = FALSE,
+      selection = "none",
+      options = list(
+        paging = FALSE,
+        searching = FALSE,
+        ordering = FALSE,
+        info = FALSE,
+        columnDefs = list(
+          list(
+            targets = 1,
+            className = "dt-center",
+            width = "80px",
+            searchable = FALSE
+          )
+        )
+      )
+    )
+  })
+  
+  observeEvent(
+    input$delete_custom_table,
+    {
+      
+      config <- config_file()
+      
+      custom_tables <- if (
+        !is.null(config$custom)
+      ) {
+        as.character(
+          unlist(
+            config$custom,
+            use.names = FALSE
+          )
+        )
+      } else {
+        character()
+      }
+      
+      custom_tables <- trimws(
+        custom_tables
+      )
+      
+      custom_tables <- custom_tables[
+        nzchar(custom_tables)
+      ]
+      
+      delete_index <- as.integer(
+        input$delete_custom_table
+      )
+      
+      if (
+        is.na(delete_index) ||
+        delete_index < 1 ||
+        delete_index > length(custom_tables)
+      ) {
+        showNotification(
+          "The selected custom dataset could not be identified.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      dataset_name <- custom_tables[
+        delete_index
+      ]
+      
+      custom_table_pending_delete(
+        dataset_name
+      )
+      
+      showModal(
+        modalDialog(
+          title = paste(
+            "Delete",
+            dataset_name
+          ),
+          
+          tags$div(
+            class = "alert alert-warning",
+            
+            tags$p(
+              tags$strong(
+                "This action cannot be undone."
+              )
+            ),
+            
+            tags$p(
+              paste0(
+                "Deleting ",
+                dataset_name,
+                " may break dashboard functionality if any cards ",
+                "or charts currently rely on this dataset."
+              )
+            ),
+            
+            tags$p(
+              style = "margin-bottom: 0;",
+              paste(
+                "The dataset will be removed from the dashboard",
+                "configuration, metadata and local data files."
+              )
+            )
+          ),
+          
+          footer = tagList(
+            actionButton(
+              inputId = "cancel_delete_custom_table",
+              label = "Cancel"
+            ),
+            
+            actionButton(
+              inputId = "confirm_delete_custom_table",
+              label = "Delete dataset",
+              icon = icon("trash"),
+              class = "btn-danger"
+            )
+          ),
+          
+          easyClose = FALSE
+        )
+      )
+    },
+    ignoreInit = TRUE
+  )
+  
+  observeEvent(
+    input$confirm_delete_custom_table,
+    {
+      
+      dataset_name <- custom_table_pending_delete()
+      
+      req(dataset_name)
+      req(folder())
+      
+      config <- config_file()
+      
+      custom_tables <- if (
+        !is.null(config$custom)
+      ) {
+        as.character(
+          unlist(
+            config$custom,
+            use.names = FALSE
+          )
+        )
+      } else {
+        character()
+      }
+      
+      custom_tables <- trimws(
+        custom_tables
+      )
+      
+      custom_tables <- custom_tables[
+        nzchar(custom_tables)
+      ]
+      
+      if (!dataset_name %in% custom_tables) {
+        showNotification(
+          "The selected custom dataset could no longer be found.",
+          type = "error"
+        )
+        
+        custom_table_pending_delete(
+          NULL
+        )
+        
+        return()
+      }
+      
+      config_path <- file.path(
+        folder(),
+        "src",
+        "config",
+        "config.js"
+      )
+      
+      data_json_path <- file.path(
+        folder(),
+        "public",
+        "data",
+        "data.json"
+      )
+      
+      csv_path <- file.path(
+        folder(),
+        "public",
+        "data",
+        paste0(
+          dataset_name,
+          ".csv"
+        )
+      )
+      
+      original_config <- readLines(
+        config_path,
+        warn = FALSE,
+        encoding = "UTF-8"
+      )
+      
+      data_json_existed <- file.exists(
+        data_json_path
+      )
+      
+      original_data_json <- if (
+        data_json_existed
+      ) {
+        readLines(
+          data_json_path,
+          warn = FALSE,
+          encoding = "UTF-8"
+        )
+      } else {
+        character()
+      }
+      
+      csv_existed <- file.exists(
+        csv_path
+      )
+      
+      original_csv <- if (
+        csv_existed
+      ) {
+        
+        connection <- file(
+          csv_path,
+          open = "rb"
+        )
+        
+        bytes <- readBin(
+          connection,
+          what = "raw",
+          n = file.info(csv_path)$size
+        )
+        
+        close(
+          connection
+        )
+        
+        bytes
+        
+      } else {
+        raw()
+      }
+      
+      updated_custom <- custom_tables[
+        custom_tables != dataset_name
+      ]
+      
+      config_text <- paste(
+        original_config,
+        collapse = "\n"
+      )
+      
+      updated_config <- replace_custom_in_config(
+        config_text = config_text,
+        custom_tables = updated_custom
+      )
+      
+      all_data <- if (
+        data_json_existed &&
+        file.info(data_json_path)$size > 0
+      ) {
+        jsonlite::read_json(
+          data_json_path,
+          simplifyVector = FALSE
+        )
+      } else {
+        list()
+      }
+      
+      all_data[[dataset_name]] <- NULL
+      
+      tryCatch(
+        {
+          
+          writeLines(
+            updated_config,
+            config_path,
+            useBytes = TRUE
+          )
+          
+          jsonlite::write_json(
+            all_data,
+            data_json_path,
+            pretty = TRUE,
+            auto_unbox = TRUE
+          )
+          
+          if (file.exists(csv_path)) {
+            unlink(
+              csv_path
+            )
+          }
+          
+          config_version(
+            config_version() + 1
+          )
+          
+          loaded_tables_version(
+            loaded_tables_version() + 1
+          )
+          
+          custom_table_pending_delete(
+            NULL
+          )
+          
+          show_matrix_editor()
+          
+          showNotification(
+            paste(
+              dataset_name,
+              "was deleted."
+            ),
+            type = "message"
+          )
+        },
+        
+        error = function(error) {
+          
+          writeLines(
+            original_config,
+            config_path,
+            useBytes = TRUE
+          )
+          
+          if (data_json_existed) {
+            writeLines(
+              original_data_json,
+              data_json_path,
+              useBytes = TRUE
+            )
+          }
+          
+          if (csv_existed) {
+            
+            connection <- file(
+              csv_path,
+              open = "wb"
+            )
+            
+            writeBin(
+              original_csv,
+              connection
+            )
+            
+            close(
+              connection
+            )
+          }
+          
+          showNotification(
+            paste(
+              "The custom dataset could not be deleted:",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = NULL
+          )
+        }
+      )
+    },
+    ignoreInit = TRUE
+  )
+  
+  observeEvent(
+    input$cancel_delete_custom_table,
+    {
+      
+      custom_table_pending_delete(
+        NULL
+      )
+      
+      show_matrix_editor()
+    },
+    ignoreInit = TRUE
+  )
   
   show_custom_variable_classification_modal <- function() {
     
