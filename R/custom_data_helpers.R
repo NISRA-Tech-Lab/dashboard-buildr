@@ -437,3 +437,67 @@ suggest_custom_date_frequency <- function(
   #
   "yearly"
 }
+
+read_custom_geography_lookup <- function() {
+  
+  lookup_path <- system.file(
+    "extdata",
+    "geography_lookup.csv",
+    package = "dashboardBuildR"
+  )
+  
+  if (!nzchar(lookup_path)) {
+    stop(
+      "The geography lookup file could not be found."
+    )
+  }
+  
+  lookup <- utils::read.csv(
+    lookup_path,
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  
+  required_columns <- c(
+    "geography_type",
+    "geography_code",
+    "geography_name"
+  )
+  
+  missing_columns <- setdiff(
+    required_columns,
+    names(lookup)
+  )
+  
+  if (length(missing_columns) > 0) {
+    stop(
+      paste(
+        "The geography lookup is missing:",
+        paste(
+          missing_columns,
+          collapse = ", "
+        )
+      )
+    )
+  }
+  
+  lookup$geography_type <- trimws(
+    as.character(
+      lookup$geography_type
+    )
+  )
+  
+  lookup$geography_code <- trimws(
+    as.character(
+      lookup$geography_code
+    )
+  )
+  
+  lookup$geography_name <- trimws(
+    as.character(
+      lookup$geography_name
+    )
+  )
+  
+  lookup
+}
