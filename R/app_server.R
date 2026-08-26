@@ -3294,6 +3294,40 @@ app_server <- function(
   ### Save Matrix ####
   observeEvent(input$save_matrices, {
     
+    config <- config_file()
+    
+    original_matrices <- if (
+      !is.null(config$matrix)
+    ) {
+      as.character(
+        unlist(
+          config$matrix,
+          use.names = FALSE
+        )
+      )
+    } else {
+      character()
+    }
+    
+    original_matrices <- trimws(
+      original_matrices
+    )
+    
+    original_matrices <- original_matrices[
+      nzchar(original_matrices) &
+        !original_matrices %in% c(
+          "EXAMPLETABLE1",
+          "EXAMPLETABLE2"
+        )
+    ]
+    
+    updated_matrices <- matrix_draft()
+    
+    removed_matrices <- setdiff(
+      original_matrices,
+      updated_matrices
+    )
+    
     config_path <- file.path(
       folder(),
       "src",
@@ -3312,7 +3346,7 @@ app_server <- function(
     
     updated_config <- replace_matrix_in_config(
       config_text,
-      matrix_draft()
+      updated_matrices
     )
     
     writeLines(
@@ -3333,14 +3367,47 @@ app_server <- function(
     }
     
     old_wd <- getwd()
-    on.exit(setwd(old_wd), add = TRUE)
+    on.exit(
+      setwd(old_wd),
+      add = TRUE
+    )
     
-    setwd(folder())
+    setwd(
+      folder()
+    )
     
     source(
       data_script,
-      local = new.env(parent = globalenv())
+      local = new.env(
+        parent = globalenv()
+      )
     )
+    
+    #
+    # Only remove old CSV files after data.R has
+    # completed successfully.
+    #
+    if (length(removed_matrices) > 0) {
+      
+      for (matrix_name in removed_matrices) {
+        
+        csv_path <- file.path(
+          folder(),
+          "public",
+          "data",
+          paste0(
+            matrix_name,
+            ".csv"
+          )
+        )
+        
+        if (file.exists(csv_path)) {
+          unlink(
+            csv_path
+          )
+        }
+      }
+    }
     
     loaded_tables_version(
       loaded_tables_version() + 1
@@ -3356,7 +3423,6 @@ app_server <- function(
       "Data Portal tables saved.",
       type = "message"
     )
-    
   })
   
   # Home page design tab ####
