@@ -15073,6 +15073,7 @@ app_server <- function(
       import_data <- pending_custom_import()
       
       req(import_data)
+      req(folder())
       
       metadata <- tryCatch(
         build_custom_dataset_metadata(
@@ -15089,22 +15090,405 @@ app_server <- function(
             duration = NULL
           )
           
-          return(NULL)
+          NULL
         }
       )
       
-      req(metadata)
+      if (is.null(metadata)) {
+        return()
+      }
       
-      print(
-        metadata
+      dataset_name <- import_data$dataset_name
+      
+      data_dir <- file.path(
+        folder(),
+        "public",
+        "data"
       )
       
-      showNotification(
-        paste(
-          "Metadata created successfully for",
-          import_data$dataset_name
-        ),
-        type = "message"
+      if (!dir.exists(data_dir)) {
+        dir.create(
+          data_dir,
+          recursive = TRUE
+        )
+      }
+      
+      csv_path <- file.path(
+        data_dir,
+        paste0(
+          dataset_name,
+          ".csv"
+        )
+      )
+      
+      data_json_path <- file.path(
+        data_dir,
+        "data.json"
+      )
+      
+      config_path <- file.path(
+        folder(),
+        "src",
+        "config",
+        "config.js"
+      )
+      
+      if (!file.exists(config_path)) {
+        showNotification(
+          "config.js was not found.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      #
+      # Preserve existing files so the import can be
+      # completely rolled back if any write fails.
+      #
+      original_config <- readLines(
+        config_path,
+        warn = FALSE,
+        encoding = "UTF-8"
+      )
+      
+      data_json_existed <- file.exists(
+        data_json_path
+      )
+      
+      original_data_json <- if (
+        data_json_existed
+      ) {
+        readLines(
+          data_json_path,
+          warn = FALSE,
+          encoding = "UTF-8"
+        )
+      } else {
+        character()
+      }
+      
+      csv_existed <- file.exists(
+        csv_path
+      )
+      
+      original_csv <- if (
+        csv_existed
+      ) {
+        
+        connection <- file(
+          csv_path,
+          open = "rb"
+        )
+        
+        on.exit(
+          close(connection),
+          add = TRUE
+        )
+        
+        csv_bytes <- readBin(
+          connection,
+          what = "raw",
+          n = file.info(csv_path)$size
+        )
+        
+        close(connection)
+        
+        on.exit(
+          NULL,
+          add = FALSE
+        )
+        
+        csv_bytes
+        
+      } else {
+        raw()
+      }
+      
+      #
+      # Read existing custom names from config.
+      #
+      config <- config_file()
+      
+      existing_custom <- if (
+        !is.null(config$custom)
+      ) {
+        as.character(
+          unlist(
+            config$custom,
+            use.names = FALSE
+          )
+        )
+      } else {
+        character()
+      }
+      
+      existing_custom <- trimws(
+        existing_custom
+      )
+      
+      existing_custom <- existing_custom[
+        nzchar(existing_custom)
+      ]
+      
+      updated_custom <- unique(
+        c(
+          existing_custom,
+          dataset_name
+        )
+      )
+      
+      #
+      # Build updated config.js.
+      #
+      config_text <- paste(
+        original_config,
+        collapse = "\n"
+      )
+      
+      updated_config <- replace_custom_in_config(
+        config_text = config_text,
+        custom_tables = updated_custom
+      )
+      
+      #
+      # Read the existing combined metadata file.
+      #
+      all_data <- if (
+        data_json_existed &&
+        file.info(data_json_path)$size > 0
+      ) {
+        
+        tryCatch(
+          {
+            jsonlite::read_json(
+              data_json_path,
+              simplifyVector = FALSE
+            )
+          },
+          error = function(error) {
+            
+            showNotification(
+              paste(
+                "The existing data.json could not be read:",
+                conditionMessage(error)
+              ),
+              type = "error",
+              duration = NULL
+            )
+            
+            NULL
+          }
+        )
+        
+      } else {
+        
+        list()
+      }
+      
+      if (is.null(all_data)) {
+        return()
+      }
+      
+      #
+      # Add the new custom dataset as another top-level
+      # object alongside Data Portal matrices.
+      #
+      all_data[[
+        dataset_name
+      ]] <- metadata
+      
+      tryCatch(
+        {
+          
+          #
+          # Write imported CSV.
+          #
+          csv_output <- import_data$data
+          
+          geography_columns <- names(
+            import_data$variable_types[
+              import_data$variable_types == "geography"
+            ]
+          )
+          
+          if (length(geography_columns) > 0) {
+            
+            geography_lookup <- read_custom_geography_lookup()
+            
+            for (column_name in geography_columns) {
+              
+              geography_type <- import_data$geography_types[[
+                column_name
+              ]]
+              
+              relevant_lookup <- geography_lookup[
+                geography_lookup$geography_type %in%
+                  c(
+                    geography_type,
+                    "NI"
+                  ),
+                ,
+                drop = FALSE
+              ]
+              
+              geography_names <- stats::setNames(
+                relevant_lookup$geography_name,
+                relevant_lookup$geography_code
+              )
+              
+              current_codes <- trimws(
+                as.character(
+                  csv_output[[
+                    column_name
+                  ]]
+                )
+              )
+              
+              matched_names <- unname(
+                geography_names[
+                  current_codes
+                ]
+              )
+              
+              #
+              # Geography codes have already been validated earlier,
+              # so every non-missing code should have a matching name.
+              #
+              keep_missing <- is.na(
+                csv_output[[
+                  column_name
+                ]]
+              )
+              
+              csv_output[[
+                column_name
+              ]] <- matched_names
+              
+              csv_output[[
+                column_name
+              ]][keep_missing] <- NA_character_
+            }
+          }
+          
+          utils::write.csv(
+            csv_output,
+            csv_path,
+            row.names = FALSE,
+            na = ""
+          )
+          
+          #
+          # Update config$custom.
+          #
+          writeLines(
+            updated_config,
+            config_path,
+            useBytes = TRUE
+          )
+          
+          #
+          # Update combined data.json.
+          #
+          jsonlite::write_json(
+            all_data,
+            data_json_path,
+            pretty = TRUE,
+            auto_unbox = TRUE
+          )
+          
+          #
+          # Refresh BuildR state.
+          #
+          config_version(
+            config_version() + 1
+          )
+          
+          loaded_tables_version(
+            loaded_tables_version() + 1
+          )
+          
+          pending_custom_import(
+            NULL
+          )
+          
+          custom_category_orders(
+            list()
+          )
+          
+          removeModal()
+          
+          showNotification(
+            paste(
+              dataset_name,
+              "was imported successfully."
+            ),
+            type = "message"
+          )
+        },
+        
+        error = function(error) {
+          
+          #
+          # Restore config.js.
+          #
+          writeLines(
+            original_config,
+            config_path,
+            useBytes = TRUE
+          )
+          
+          #
+          # Restore or remove data.json.
+          #
+          if (data_json_existed) {
+            
+            writeLines(
+              original_data_json,
+              data_json_path,
+              useBytes = TRUE
+            )
+            
+          } else if (file.exists(data_json_path)) {
+            
+            unlink(
+              data_json_path
+            )
+          }
+          
+          #
+          # Restore or remove imported CSV.
+          #
+          if (csv_existed) {
+            
+            connection <- file(
+              csv_path,
+              open = "wb"
+            )
+            
+            writeBin(
+              original_csv,
+              connection
+            )
+            
+            close(connection)
+            
+          } else if (file.exists(csv_path)) {
+            
+            unlink(
+              csv_path
+            )
+          }
+          
+          showNotification(
+            paste(
+              "The CSV import was rolled back after an error:",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = NULL
+          )
+        }
       )
     },
     ignoreInit = TRUE
