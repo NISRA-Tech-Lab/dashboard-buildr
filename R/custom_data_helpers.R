@@ -511,3 +511,80 @@ custom_geography_choices <- function() {
     "Health and Social Care Trust" = "HSCT"
   )
 }
+
+suggest_custom_geography_type <- function(
+    values
+) {
+  
+  lookup <- read_custom_geography_lookup()
+  
+  values <- unique(
+    trimws(
+      as.character(values)
+    )
+  )
+  
+  values <- values[
+    !is.na(values) &
+      nzchar(values)
+  ]
+  
+  #
+  # Northern Ireland is valid alongside any supported
+  # geography type, so exclude it when inferring type.
+  #
+  ni_codes <- lookup$geography_code[
+    lookup$geography_type == "NI"
+  ]
+  
+  values_to_match <- setdiff(
+    values,
+    ni_codes
+  )
+  
+  if (length(values_to_match) == 0) {
+    return("")
+  }
+  
+  geography_types <- c(
+    "AA",
+    "AA2024",
+    "LGD2014",
+    "HSCT"
+  )
+  
+  match_counts <- vapply(
+    geography_types,
+    function(geography_type) {
+      
+      valid_codes <- lookup$geography_code[
+        lookup$geography_type == geography_type
+      ]
+      
+      sum(
+        values_to_match %in%
+          valid_codes
+      )
+    },
+    integer(1)
+  )
+  
+  best_match <- geography_types[
+    which.max(
+      match_counts
+    )
+  ]
+  
+  #
+  # Only suggest a type if every non-NI geography code
+  # belongs to that geography type.
+  #
+  if (
+    max(match_counts) ==
+    length(values_to_match)
+  ) {
+    return(best_match)
+  }
+  
+  ""
+}

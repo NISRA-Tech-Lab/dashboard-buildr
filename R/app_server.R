@@ -14576,6 +14576,9 @@ app_server <- function(
                     ),
                     label = "Geography type",
                     choices = custom_geography_choices(),
+                    selected = suggest_custom_geography_type(
+                      import_data$data[[column_name]]
+                    ),
                     width = "100%"
                   )
                 )
@@ -14602,5 +14605,143 @@ app_server <- function(
       )
     )
   }
+  
+  observeEvent(
+    input$continue_custom_geography_configuration,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      
+      geography_columns <- names(
+        import_data$variable_types[
+          import_data$variable_types == "geography"
+        ]
+      )
+      
+      lookup <- read_custom_geography_lookup()
+      
+      selected_geography_types <- vapply(
+        seq_along(
+          geography_columns
+        ),
+        function(index) {
+          
+          selected_type <- input[[
+            paste0(
+              "custom_geography_type_",
+              index
+            )
+          ]]
+          
+          if (
+            is.null(selected_type) ||
+            !selected_type %in% c(
+              "AA",
+              "AA2024",
+              "LGD2014",
+              "HSCT"
+            )
+          ) {
+            return("")
+          }
+          
+          selected_type
+        },
+        character(1)
+      )
+      
+      names(selected_geography_types) <-
+        geography_columns
+      
+      if (any(!nzchar(
+        selected_geography_types
+      ))) {
+        showNotification(
+          "Choose a geography type for every geography variable.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      ni_codes <- lookup$geography_code[
+        lookup$geography_type == "NI"
+      ]
+      
+      for (column_name in geography_columns) {
+        
+        geography_type <-
+          selected_geography_types[[
+            column_name
+          ]]
+        
+        valid_codes <- c(
+          lookup$geography_code[
+            lookup$geography_type ==
+              geography_type
+          ],
+          ni_codes
+        )
+        
+        csv_codes <- unique(
+          trimws(
+            as.character(
+              import_data$data[[
+                column_name
+              ]]
+            )
+          )
+        )
+        
+        csv_codes <- csv_codes[
+          !is.na(csv_codes) &
+            nzchar(csv_codes)
+        ]
+        
+        invalid_codes <- setdiff(
+          csv_codes,
+          valid_codes
+        )
+        
+        if (length(invalid_codes) > 0) {
+          showNotification(
+            paste0(
+              "The geography variable '",
+              column_name,
+              "' contains codes that are not valid for the selected geography type: ",
+              paste(
+                invalid_codes,
+                collapse = ", "
+              )
+            ),
+            type = "error",
+            duration = NULL
+          )
+          
+          return()
+        }
+      }
+      
+      import_data$geography_types <-
+        selected_geography_types
+      
+      pending_custom_import(
+        import_data
+      )
+      
+      showNotification(
+        "Geography configuration saved.",
+        type = "message"
+      )
+      
+      #
+      # Next stage:
+      # review and import.
+      #
+    },
+    ignoreInit = TRUE
+  )
   
 }
