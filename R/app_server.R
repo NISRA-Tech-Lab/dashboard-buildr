@@ -14437,6 +14437,32 @@ app_server <- function(
   }
   
   observeEvent(
+    input$back_custom_date_configuration,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      
+      variable_types <- import_data$variable_types
+      
+      removeModal()
+      
+      if (any(
+        variable_types == "categorical"
+      )) {
+        
+        show_custom_category_order_modal()
+        
+      } else {
+        
+        show_custom_variable_classification_modal()
+      }
+    },
+    ignoreInit = TRUE
+  )
+  
+  observeEvent(
     input$continue_custom_date_configuration,
     {
       
@@ -14526,14 +14552,7 @@ app_server <- function(
     )
     
     if (length(geography_columns) == 0) {
-      showNotification(
-        "No geography variables require configuration.",
-        type = "message"
-      )
-      
-      #
-      # Next stage will follow here later.
-      #
+      show_custom_import_review_modal()
       return()
     }
     
@@ -14605,6 +14624,38 @@ app_server <- function(
       )
     )
   }
+  
+  observeEvent(
+    input$back_custom_geography_configuration,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      
+      variable_types <- import_data$variable_types
+      
+      removeModal()
+      
+      if (any(
+        variable_types == "date"
+      )) {
+        
+        show_custom_date_configuration_modal()
+        
+      } else if (any(
+        variable_types == "categorical"
+      )) {
+        
+        show_custom_category_order_modal()
+        
+      } else {
+        
+        show_custom_variable_classification_modal()
+      }
+    },
+    ignoreInit = TRUE
+  )
   
   observeEvent(
     input$continue_custom_geography_configuration,
@@ -14731,15 +14782,330 @@ app_server <- function(
         import_data
       )
       
-      showNotification(
-        "Geography configuration saved.",
-        type = "message"
+      pending_custom_import(
+        import_data
       )
       
-      #
-      # Next stage:
-      # review and import.
-      #
+      removeModal()
+      
+      show_custom_import_review_modal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  show_custom_import_review_modal <- function() {
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    showModal(
+      modalDialog(
+        title = paste0(
+          "Review import - ",
+          import_data$dataset_name
+        ),
+        
+        tags$p(
+          paste(
+            "Review the dataset configuration below before importing it",
+            "into the dashboard."
+          )
+        ),
+        
+        uiOutput(
+          "custom_import_review_ui"
+        ),
+        
+        footer = tagList(
+          actionButton(
+            inputId = "back_custom_import_review",
+            label = "Back"
+          ),
+          
+          actionButton(
+            inputId = "confirm_custom_import",
+            label = "Import dataset",
+            class = "btn-primary"
+          )
+        ),
+        
+        size = "l",
+        easyClose = FALSE
+      )
+    )
+  }
+  
+  
+  output$custom_import_review_ui <- renderUI({
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    variable_types <- import_data$variable_types
+    
+    categorical_columns <- names(
+      variable_types[
+        variable_types == "categorical"
+      ]
+    )
+    
+    date_columns <- names(
+      variable_types[
+        variable_types == "date"
+      ]
+    )
+    
+    geography_columns <- names(
+      variable_types[
+        variable_types == "geography"
+      ]
+    )
+    
+    numeric_columns <- names(
+      variable_types[
+        variable_types == "numeric"
+      ]
+    )
+    
+    geography_choices <-
+      custom_geography_choices()
+    
+    geography_labels <- stats::setNames(
+      names(geography_choices),
+      unname(geography_choices)
+    )
+    
+    variable_rows <- lapply(
+      names(variable_types),
+      function(column_name) {
+        
+        variable_type <-
+          variable_types[[column_name]]
+        
+        detail <- switch(
+          variable_type,
+          
+          categorical = {
+            
+            values <- import_data$category_orders[[
+              column_name
+            ]]
+            
+            paste0(
+              length(values),
+              if (length(values) == 1) {
+                " category"
+              } else {
+                " categories"
+              },
+              ": ",
+              paste(
+                values,
+                collapse = ", "
+              )
+            )
+          },
+          
+          date = {
+            
+            frequency <- import_data$date_frequencies[[
+              column_name
+            ]]
+            
+            frequency_labels <- c(
+              yearly = "Yearly",
+              quarterly = "Quarterly",
+              monthly = "Monthly",
+              weekly = "Weekly"
+            )
+            
+            unname(
+              frequency_labels[[
+                frequency
+              ]]
+            )
+          },
+          
+          geography = {
+            
+            geography_type <- import_data$geography_types[[
+              column_name
+            ]]
+            
+            unname(
+              geography_labels[[
+                geography_type
+              ]]
+            )
+          },
+          
+          numeric = {
+            "Grouped under Values"
+          },
+          
+          ""
+        )
+        
+        tags$tr(
+          tags$td(
+            column_name
+          ),
+          tags$td(
+            switch(
+              variable_type,
+              categorical = "Categorical",
+              date = "Date / time",
+              geography = "Geography",
+              numeric = "Numeric",
+              variable_type
+            )
+          ),
+          tags$td(
+            detail
+          )
+        )
+      }
+    )
+    
+    tagList(
+      
+      tags$div(
+        class = "panel panel-default",
+        
+        tags$div(
+          class = "panel-heading",
+          tags$strong(
+            "Dataset"
+          )
+        ),
+        
+        tags$div(
+          class = "panel-body",
+          
+          tags$p(
+            tags$strong("Short name: "),
+            import_data$dataset_name
+          ),
+          
+          tags$p(
+            tags$strong("Title: "),
+            import_data$dataset_title
+          ),
+          
+          tags$p(
+            tags$strong("Updated: "),
+            import_data$updated
+          ),
+          
+          tags$p(
+            style = "margin-bottom: 0;",
+            tags$strong("Source file: "),
+            import_data$original_filename
+          )
+        )
+      ),
+      
+      tags$div(
+        class = "panel panel-default",
+        
+        tags$div(
+          class = "panel-heading",
+          tags$strong(
+            "Variables"
+          )
+        ),
+        
+        tags$div(
+          class = "panel-body",
+          
+          tags$table(
+            class = "table table-striped table-condensed",
+            
+            tags$thead(
+              tags$tr(
+                tags$th("Variable"),
+                tags$th("Type"),
+                tags$th("Configuration")
+              )
+            ),
+            
+            tags$tbody(
+              variable_rows
+            )
+          ),
+          
+          tags$p(
+            class = "help-block",
+            style = "margin-bottom: 0;",
+            paste0(
+              length(numeric_columns),
+              if (length(numeric_columns) == 1) {
+                " numeric column will be grouped"
+              } else {
+                " numeric columns will be grouped"
+              },
+              ' under the synthetic "Values" variable.'
+            )
+          )
+        )
+      )
+    )
+  })
+  
+  
+  observeEvent(
+    input$back_custom_import_review,
+    {
+      
+      removeModal()
+      
+      show_custom_geography_configuration_modal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  observeEvent(
+    input$confirm_custom_import,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      
+      metadata <- tryCatch(
+        build_custom_dataset_metadata(
+          import_data
+        ),
+        error = function(error) {
+          
+          showNotification(
+            paste(
+              "Could not build dataset metadata:",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = NULL
+          )
+          
+          return(NULL)
+        }
+      )
+      
+      req(metadata)
+      
+      print(
+        metadata
+      )
+      
+      showNotification(
+        paste(
+          "Metadata created successfully for",
+          import_data$dataset_name
+        ),
+        type = "message"
+      )
     },
     ignoreInit = TRUE
   )

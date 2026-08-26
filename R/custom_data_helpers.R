@@ -588,3 +588,235 @@ suggest_custom_geography_type <- function(
   
   ""
 }
+
+build_custom_dataset_metadata <- function(
+    import_data
+) {
+  
+  if (is.null(import_data$dataset_name)) {
+    stop("The custom dataset name is missing.")
+  }
+  
+  if (is.null(import_data$dataset_title)) {
+    stop("The custom dataset title is missing.")
+  }
+  
+  if (is.null(import_data$updated)) {
+    stop("The custom dataset updated date is missing.")
+  }
+  
+  if (is.null(import_data$variable_types)) {
+    stop("The custom dataset variables have not been classified.")
+  }
+  
+  csv_data <- import_data$data
+  variable_types <- import_data$variable_types
+  
+  variables <- list()
+  
+  #
+  # Categorical variables
+  #
+  categorical_columns <- names(
+    variable_types[
+      variable_types == "categorical"
+    ]
+  )
+  
+  for (column_name in categorical_columns) {
+    
+    category_values <- import_data$category_orders[[
+      column_name
+    ]]
+    
+    value_codes <- as.character(
+      seq_along(category_values)
+    )
+    
+    values <- stats::setNames(
+      as.list(category_values),
+      value_codes
+    )
+    
+    variable_code <- toupper(
+      gsub(
+        "[^A-Za-z0-9]",
+        "",
+        column_name
+      )
+    )
+    
+    variables[[length(variables) + 1L]] <- list(
+      code = variable_code,
+      name = column_name,
+      type = "categorical",
+      values = values
+    )
+  }
+  
+  #
+  # Date / time variables
+  #
+  date_columns <- names(
+    variable_types[
+      variable_types == "date"
+    ]
+  )
+  
+  frequency_codes <- c(
+    yearly = "TLIST(A1)",
+    quarterly = "TLIST(Q1)",
+    monthly = "TLIST(M1)",
+    weekly = "TLIST(W1)"
+  )
+  
+  for (column_name in date_columns) {
+    
+    frequency <- import_data$date_frequencies[[
+      column_name
+    ]]
+    
+    variable_code <- unname(
+      frequency_codes[[
+        frequency
+      ]]
+    )
+    
+    date_values <- unique(
+      as.character(
+        csv_data[[
+          column_name
+        ]]
+      )
+    )
+    
+    date_values <- date_values[
+      !is.na(date_values) &
+        nzchar(trimws(date_values))
+    ]
+    
+    values <- stats::setNames(
+      as.list(date_values),
+      date_values
+    )
+    
+    variables[[length(variables) + 1L]] <- list(
+      code = variable_code,
+      name = column_name,
+      type = "date",
+      values = values
+    )
+  }
+  
+  #
+  # Geography variables
+  #
+  geography_columns <- names(
+    variable_types[
+      variable_types == "geography"
+    ]
+  )
+  
+  if (length(geography_columns) > 0) {
+    
+    geography_lookup <- read_custom_geography_lookup()
+    
+    for (column_name in geography_columns) {
+      
+      geography_type <- import_data$geography_types[[
+        column_name
+      ]]
+      
+      geography_codes <- unique(
+        trimws(
+          as.character(
+            csv_data[[
+              column_name
+            ]]
+          )
+        )
+      )
+      
+      geography_codes <- geography_codes[
+        !is.na(geography_codes) &
+          nzchar(geography_codes)
+      ]
+      
+      relevant_lookup <- geography_lookup[
+        geography_lookup$geography_type %in%
+          c(
+            geography_type,
+            "NI"
+          ) &
+          geography_lookup$geography_code %in%
+          geography_codes,
+        ,
+        drop = FALSE
+      ]
+      
+      geography_names <- stats::setNames(
+        relevant_lookup$geography_name,
+        relevant_lookup$geography_code
+      )
+      
+      values <- stats::setNames(
+        as.list(
+          unname(
+            geography_names[
+              geography_codes
+            ]
+          )
+        ),
+        geography_codes
+      )
+      
+      variables[[length(variables) + 1L]] <- list(
+        code = geography_type,
+        name = column_name,
+        type = "geography",
+        values = values
+      )
+    }
+  }
+  
+  #
+  # All numeric CSV columns are represented by one
+  # synthetic pivot variable called Values.
+  #
+  numeric_columns <- names(
+    variable_types[
+      variable_types == "numeric"
+    ]
+  )
+  
+  if (length(numeric_columns) == 0) {
+    stop(
+      "At least one Numeric variable is required."
+    )
+  }
+  
+  numeric_codes <- as.character(
+    seq_along(
+      numeric_columns
+    )
+  )
+  
+  variables[[length(variables) + 1L]] <- list(
+    code = "VALUES",
+    name = "Values",
+    type = "numeric",
+    values = stats::setNames(
+      as.list(
+        numeric_columns
+      ),
+      numeric_codes
+    )
+  )
+  
+  list(
+    source = "custom",
+    label = import_data$dataset_title,
+    updated = import_data$updated,
+    variables = variables
+  )
+}
