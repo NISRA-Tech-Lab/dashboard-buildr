@@ -234,6 +234,15 @@ app_server <- function(
   
   selected_loaded_table <- reactiveVal(NULL)
   
+  pending_custom_import <- reactiveVal(
+    NULL
+  )
+  
+  custom_category_orders <- reactiveVal(
+    list()
+  )
+  
+  custom_table_pending_delete <- reactiveVal(NULL)
   
   loaded_table_files <- reactive({
     req(folder())
@@ -704,12 +713,16 @@ app_server <- function(
       "Pages",
       "portal_url",
       "Department",
-      "Data Portal Tables",
+      "Import data",
       "RateIt link"
     )
     
+    display_config_names <- names(config)[
+      names(config) != "custom"
+    ]
+    
     content <- vapply(
-      names(config),
+      display_config_names,
       function(config_name) {
         
         value <- config[[config_name]]
@@ -754,11 +767,97 @@ app_server <- function(
             )
           ]
           
-          if (length(matrices) == 0) {
+          custom_tables <- if (
+            !is.null(config$custom)
+          ) {
+            as.character(
+              unlist(
+                config$custom,
+                use.names = FALSE
+              )
+            )
+          } else {
+            character()
+          }
+          
+          custom_tables <- trimws(
+            custom_tables
+          )
+          
+          custom_tables <- custom_tables[
+            nzchar(custom_tables)
+          ]
+          
+          portal_text <- if (
+            length(matrices) > 0
+          ) {
+            paste(
+              matrices,
+              collapse = "<br>"
+            )
+          } else {
+            "<em>No Data Portal tables yet.</em>"
+          }
+          
+          custom_text <- if (
+            length(custom_tables) > 0
+          ) {
+            paste0(
+              "<br><br><strong>Custom CSV tables</strong><br>",
+              paste(
+                custom_tables,
+                collapse = "<br>"
+              )
+            )
+          } else {
+            ""
+          }
+          
+          return(
+            paste0(
+              portal_text,
+              custom_text
+            )
+          )
+        }
+        
+        if (config_name == "custom") {
+          
+          custom_tables <- value
+          
+          if (
+            is.null(custom_tables) ||
+            length(custom_tables) == 0
+          ) {
             return(
               paste0(
                 "<em>",
-                "No Data Portal tables yet.",
+                "No custom CSV tables yet.",
+                "</em>"
+              )
+            )
+          }
+          
+          custom_tables <- as.character(
+            unlist(
+              custom_tables,
+              use.names = FALSE
+            )
+          )
+          
+          custom_tables <- trimws(
+            custom_tables
+          )
+          
+          custom_tables <- custom_tables[
+            nzchar(custom_tables)
+          ]
+          
+          if (length(custom_tables) == 0) {
+            return(
+              paste0(
+                "<em>",
+                "No custom CSV tables yet.",
                 "</em>"
               )
             )
@@ -766,7 +865,7 @@ app_server <- function(
           
           return(
             paste(
-              matrices,
+              custom_tables,
               collapse = "<br>"
             )
           )
@@ -2071,36 +2170,83 @@ app_server <- function(
     
     showModal(
       modalDialog(
-        title = "Edit Data Portal tables",
+        title = "Edit dashboard data",
+        
+        #
+        # Data Portal section
+        #
+        h4("NISRA Data Portal"),
         
         tags$p(
-          "Data Portal tables are identified by their matrix name. ",
+          "Add tables from the NISRA Data Portal using their matrix code. ",
           tags$a(
             href = "https://data.nisra.gov.uk/",
             target = "_blank",
             rel = "noopener noreferrer",
             "Browse the NISRA Data Portal"
           ),
-          " and enter matrix codes below."
+          "."
         ),
         
         actionButton(
-          "add_matrix",
-          label = NULL,
+          inputId = "add_matrix",
+          label = "Add Data Portal table",
           icon = icon("plus"),
-          class = "btn-success",
-          title = "Add Data Portal table"
+          class = "btn-success"
         ),
         
-        tags$div(style = "margin-top: 15px;"),
+        tags$div(
+          style = "margin-top: 15px;",
+          DT::DTOutput(
+            "matrix_editor_table"
+          )
+        ),
         
-        DT::DTOutput("matrix_editor_table"),
+        tags$hr(),
+        
+        #
+        # Custom CSV section
+        #
+        h4("Custom CSV data"),
+        
+        tags$p(
+          paste(
+            "Import a prepared CSV containing a single analysis-ready table.",
+            "This should not be a full administrative or survey dataset."
+          )
+        ),
+        
+        tags$ul(
+          tags$li(
+            paste(
+              "Geographical fields should use NISRA geography codes",
+              "rather than place names."
+            )
+          ),
+          tags$li(
+            paste(
+              "Date or time variables should be stored in a single column",
+              "rather than spread across column headings."
+            )
+          )
+        ),
+        
+        actionButton(
+          inputId = "import_custom_csv",
+          label = "Import CSV",
+          icon = icon("file"),
+          class = "btn-default"
+        ),
+        
+        DT::DTOutput("custom_editor_table"),
         
         footer = tagList(
-          modalButton("Cancel"),
+          modalButton(
+            "Cancel"
+          ),
           actionButton(
-            "save_matrices",
-            "Save",
+            inputId = "save_matrices",
+            label = "Save",
             class = "btn-primary"
           )
         ),
@@ -2111,6 +2257,526 @@ app_server <- function(
     )
   }
   
+  output$custom_editor_table <- DT::renderDT({
+    
+    config <- config_file()
+    
+    custom_tables <- if (
+      !is.null(config$custom)
+    ) {
+      as.character(
+        unlist(
+          config$custom,
+          use.names = FALSE
+        )
+      )
+    } else {
+      character()
+    }
+    
+    custom_tables <- trimws(
+      custom_tables
+    )
+    
+    custom_tables <- custom_tables[
+      nzchar(custom_tables)
+    ]
+    
+    if (length(custom_tables) == 0) {
+      
+      display <- data.frame(
+        `Custom CSV table` = paste0(
+          "<em>",
+          "No custom CSV tables yet.",
+          "</em>"
+        ),
+        Actions = "",
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+      
+    } else {
+      
+      display <- data.frame(
+        `Custom CSV table` = custom_tables,
+        
+        Actions = vapply(
+          seq_along(custom_tables),
+          function(i) {
+            
+            sprintf(
+              paste0(
+                '<button class="btn btn-danger btn-sm" ',
+                'title="Delete" ',
+                'onclick="Shiny.setInputValue(',
+                '\'delete_custom_table\', %d, ',
+                '{priority:\'event\'})">',
+                '<i class="fa fa-trash"></i>',
+                '</button>'
+              ),
+              i
+            )
+          },
+          character(1)
+        ),
+        
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+    }
+    
+    DT::datatable(
+      display,
+      escape = FALSE,
+      rownames = FALSE,
+      selection = "none",
+      options = list(
+        paging = FALSE,
+        searching = FALSE,
+        ordering = FALSE,
+        info = FALSE,
+        columnDefs = list(
+          list(
+            targets = 1,
+            className = "dt-center",
+            width = "80px",
+            searchable = FALSE
+          )
+        )
+      )
+    )
+  })
+  
+  observeEvent(
+    input$delete_custom_table,
+    {
+      
+      config <- config_file()
+      
+      custom_tables <- if (
+        !is.null(config$custom)
+      ) {
+        as.character(
+          unlist(
+            config$custom,
+            use.names = FALSE
+          )
+        )
+      } else {
+        character()
+      }
+      
+      custom_tables <- trimws(
+        custom_tables
+      )
+      
+      custom_tables <- custom_tables[
+        nzchar(custom_tables)
+      ]
+      
+      delete_index <- as.integer(
+        input$delete_custom_table
+      )
+      
+      if (
+        is.na(delete_index) ||
+        delete_index < 1 ||
+        delete_index > length(custom_tables)
+      ) {
+        showNotification(
+          "The selected custom dataset could not be identified.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      dataset_name <- custom_tables[
+        delete_index
+      ]
+      
+      custom_table_pending_delete(
+        dataset_name
+      )
+      
+      showModal(
+        modalDialog(
+          title = paste(
+            "Delete",
+            dataset_name
+          ),
+          
+          tags$div(
+            class = "alert alert-warning",
+            
+            tags$p(
+              tags$strong(
+                "This action cannot be undone."
+              )
+            ),
+            
+            tags$p(
+              paste0(
+                "Deleting ",
+                dataset_name,
+                " may break dashboard functionality if any cards ",
+                "or charts currently rely on this dataset."
+              )
+            ),
+            
+            tags$p(
+              style = "margin-bottom: 0;",
+              paste(
+                "The dataset will be removed from the dashboard",
+                "configuration, metadata and local data files."
+              )
+            )
+          ),
+          
+          footer = tagList(
+            actionButton(
+              inputId = "cancel_delete_custom_table",
+              label = "Cancel"
+            ),
+            
+            actionButton(
+              inputId = "confirm_delete_custom_table",
+              label = "Delete dataset",
+              icon = icon("trash"),
+              class = "btn-danger"
+            )
+          ),
+          
+          easyClose = FALSE
+        )
+      )
+    },
+    ignoreInit = TRUE
+  )
+  
+  observeEvent(
+    input$confirm_delete_custom_table,
+    {
+      
+      dataset_name <- custom_table_pending_delete()
+      
+      req(dataset_name)
+      req(folder())
+      
+      config <- config_file()
+      
+      custom_tables <- if (
+        !is.null(config$custom)
+      ) {
+        as.character(
+          unlist(
+            config$custom,
+            use.names = FALSE
+          )
+        )
+      } else {
+        character()
+      }
+      
+      custom_tables <- trimws(
+        custom_tables
+      )
+      
+      custom_tables <- custom_tables[
+        nzchar(custom_tables)
+      ]
+      
+      if (!dataset_name %in% custom_tables) {
+        showNotification(
+          "The selected custom dataset could no longer be found.",
+          type = "error"
+        )
+        
+        custom_table_pending_delete(
+          NULL
+        )
+        
+        return()
+      }
+      
+      config_path <- file.path(
+        folder(),
+        "src",
+        "config",
+        "config.js"
+      )
+      
+      data_json_path <- file.path(
+        folder(),
+        "public",
+        "data",
+        "data.json"
+      )
+      
+      csv_path <- file.path(
+        folder(),
+        "public",
+        "data",
+        paste0(
+          dataset_name,
+          ".csv"
+        )
+      )
+      
+      original_config <- readLines(
+        config_path,
+        warn = FALSE,
+        encoding = "UTF-8"
+      )
+      
+      data_json_existed <- file.exists(
+        data_json_path
+      )
+      
+      original_data_json <- if (
+        data_json_existed
+      ) {
+        readLines(
+          data_json_path,
+          warn = FALSE,
+          encoding = "UTF-8"
+        )
+      } else {
+        character()
+      }
+      
+      csv_existed <- file.exists(
+        csv_path
+      )
+      
+      original_csv <- if (
+        csv_existed
+      ) {
+        
+        connection <- file(
+          csv_path,
+          open = "rb"
+        )
+        
+        bytes <- readBin(
+          connection,
+          what = "raw",
+          n = file.info(csv_path)$size
+        )
+        
+        close(
+          connection
+        )
+        
+        bytes
+        
+      } else {
+        raw()
+      }
+      
+      updated_custom <- custom_tables[
+        custom_tables != dataset_name
+      ]
+      
+      config_text <- paste(
+        original_config,
+        collapse = "\n"
+      )
+      
+      updated_config <- replace_custom_in_config(
+        config_text = config_text,
+        custom_tables = updated_custom
+      )
+      
+      all_data <- if (
+        data_json_existed &&
+        file.info(data_json_path)$size > 0
+      ) {
+        jsonlite::read_json(
+          data_json_path,
+          simplifyVector = FALSE
+        )
+      } else {
+        list()
+      }
+      
+      all_data[[dataset_name]] <- NULL
+      
+      tryCatch(
+        {
+          
+          writeLines(
+            updated_config,
+            config_path,
+            useBytes = TRUE
+          )
+          
+          jsonlite::write_json(
+            all_data,
+            data_json_path,
+            pretty = TRUE,
+            auto_unbox = TRUE
+          )
+          
+          if (file.exists(csv_path)) {
+            unlink(
+              csv_path
+            )
+          }
+          
+          config_version(
+            config_version() + 1
+          )
+          
+          loaded_tables_version(
+            loaded_tables_version() + 1
+          )
+          
+          custom_table_pending_delete(
+            NULL
+          )
+          
+          show_matrix_editor()
+          
+          showNotification(
+            paste(
+              dataset_name,
+              "was deleted."
+            ),
+            type = "message"
+          )
+        },
+        
+        error = function(error) {
+          
+          writeLines(
+            original_config,
+            config_path,
+            useBytes = TRUE
+          )
+          
+          if (data_json_existed) {
+            writeLines(
+              original_data_json,
+              data_json_path,
+              useBytes = TRUE
+            )
+          }
+          
+          if (csv_existed) {
+            
+            connection <- file(
+              csv_path,
+              open = "wb"
+            )
+            
+            writeBin(
+              original_csv,
+              connection
+            )
+            
+            close(
+              connection
+            )
+          }
+          
+          showNotification(
+            paste(
+              "The custom dataset could not be deleted:",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = NULL
+          )
+        }
+      )
+    },
+    ignoreInit = TRUE
+  )
+  
+  observeEvent(
+    input$cancel_delete_custom_table,
+    {
+      
+      custom_table_pending_delete(
+        NULL
+      )
+      
+      show_matrix_editor()
+    },
+    ignoreInit = TRUE
+  )
+  
+  show_custom_variable_classification_modal <- function() {
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    csv_data <- import_data$data
+    
+    showModal(
+      modalDialog(
+        title = paste0(
+          "Classify variables - ",
+          import_data$dataset_name
+        ),
+        
+        tags$p(
+          paste(
+            "Classify each CSV column according to the role",
+            "it will have in the dashboard."
+          )
+        ),
+        
+        tags$div(
+          class = "alert alert-info",
+          
+          tags$p(
+            style = "margin-bottom: 0;",
+            paste(
+              "At least one column must be classified as Numeric.",
+              "All Numeric columns will be grouped together as",
+              'the synthetic "Values" variable.'
+            )
+          )
+        ),
+        
+        uiOutput(
+          "custom_variable_classification_ui"
+        ),
+        
+        footer = tagList(
+          actionButton(
+            inputId = "cancel_custom_variable_classification",
+            label = "Cancel"
+          ),
+          
+          actionButton(
+            inputId = "continue_custom_variable_classification",
+            label = "Continue",
+            class = "btn-primary"
+          )
+        ),
+        
+        size = "l",
+        easyClose = FALSE
+      )
+    )
+  }
+  
+  observeEvent(
+    input$cancel_custom_variable_classification,
+    {
+      
+      pending_custom_import(
+        NULL
+      )
+      
+      show_matrix_editor()
+    },
+    ignoreInit = TRUE
+  )
   
   observeEvent(input$edit_setting, {
     req(input$edit_setting == 4)
@@ -2252,9 +2918,305 @@ app_server <- function(
     
   })
   
+  ### Import custom CSV ####
+  
+  
+  observeEvent(
+    input$import_custom_csv,
+    {
+      
+      req(folder())
+      
+      config <- config_file()
+      
+      suggested_name <- suggest_custom_dataset_name(
+        project_root = folder(),
+        config = config
+      )
+      
+      showModal(
+        modalDialog(
+          title = "Import CSV",
+          
+          tags$div(
+            class = "alert alert-info",
+            
+            tags$p(
+              paste(
+                "Choose a prepared CSV containing a single",
+                "analysis-ready table."
+              )
+            ),
+            
+            tags$ul(
+              tags$li(
+                paste(
+                  "Geographical fields should use NISRA geography codes",
+                  "rather than place names."
+                )
+              ),
+              tags$li(
+                paste(
+                  "Date or time variables should be stored in a single column",
+                  "rather than spread across column headings."
+                )
+              )
+            )
+          ),
+          
+          fileInput(
+            inputId = "custom_csv_file",
+            label = "CSV file",
+            accept = c(
+              ".csv",
+              "text/csv",
+              "text/comma-separated-values"
+            ),
+            width = "100%"
+          ),
+          
+          textInput(
+            inputId = "custom_csv_name",
+            label = "Dataset short name",
+            value = suggested_name,
+            width = "100%"
+          ),
+          
+          tags$p(
+            class = "help-block",
+            paste(
+              "Use a short name of no more than 10 characters.",
+              "Only uppercase letters and numbers are allowed.",
+              "This will be used internally in place of a Data Portal matrix code."
+            )
+          ),
+          
+          textInput(
+            inputId = "custom_csv_title",
+            label = "Dataset title",
+            value = "",
+            width = "100%",
+            placeholder = "Enter a descriptive title for this dataset"
+          ),
+          
+          dateInput(
+            inputId = "custom_csv_updated",
+            label = "Dataset updated date",
+            value = Sys.Date(),
+            format = "dd/mm/yyyy",
+            width = "100%"
+          ),
+          
+          footer = tagList(
+            actionButton(
+              inputId = "cancel_import_custom_csv",
+              label = "Back"
+            ),
+            
+            actionButton(
+              inputId = "continue_import_custom_csv",
+              label = "Continue",
+              class = "btn-primary"
+            )
+          ),
+          
+          size = "l",
+          easyClose = FALSE
+        )
+      )
+    },
+    ignoreInit = TRUE
+  )
+  
   observeEvent(input$cancel_add_matrix, {
     show_matrix_editor()
   })
+  
+  observeEvent(
+    input$cancel_import_custom_csv,
+    {
+      show_matrix_editor()
+    },
+    ignoreInit = TRUE
+  )
+  
+  observeEvent(
+    input$continue_import_custom_csv,
+    {
+      
+      req(folder())
+      
+      uploaded_file <- input$custom_csv_file
+      
+      if (
+        is.null(uploaded_file) ||
+        nrow(uploaded_file) != 1
+      ) {
+        showNotification(
+          "Choose a CSV file to import.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      file_extension <- tolower(
+        tools::file_ext(
+          uploaded_file$name
+        )
+      )
+      
+      if (!identical(
+        file_extension,
+        "csv"
+      )) {
+        showNotification(
+          "The selected file must be a CSV file.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      config <- config_file()
+      
+      name_validation <- validate_custom_dataset_name(
+        dataset_name = input$custom_csv_name,
+        project_root = folder(),
+        config = config
+      )
+      
+      if (!isTRUE(
+        name_validation$valid
+      )) {
+        showNotification(
+          name_validation$message,
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      dataset_title <- trimws(
+        as.character(
+          input$custom_csv_title
+        )
+      )
+      
+      if (!nzchar(dataset_title)) {
+        showNotification(
+          "Enter a dataset title.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      updated_date <- input$custom_csv_updated
+      
+      if (
+        is.null(updated_date) ||
+        is.na(updated_date)
+      ) {
+        showNotification(
+          "Enter the date the dataset was updated.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      #
+      # Validate that the uploaded CSV can actually be read.
+      #
+      csv_data <- tryCatch(
+        {
+          read_custom_csv(
+            uploaded_file$datapath
+          )
+        },
+        error = function(error) {
+          
+          showNotification(
+            paste(
+              "The CSV file could not be read:",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = NULL
+          )
+          
+          NULL
+        }
+      )
+      
+      if (is.null(csv_data)) {
+        showNotification(
+          "The CSV file could not be read.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      if (ncol(csv_data) < 1) {
+        showNotification(
+          "The CSV file does not contain any columns.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      if (nrow(csv_data) < 1) {
+        showNotification(
+          "The CSV file does not contain any data rows.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      variable_types <- vapply(
+        names(csv_data),
+        function(variable_name) {
+          
+          suggest_custom_variable_type(
+            values = csv_data[[variable_name]],
+            variable_name = variable_name
+          )
+        },
+        character(1)
+      )
+      
+      pending_custom_import(
+        list(
+          original_filename =
+            uploaded_file$name,
+          
+          dataset_name =
+            name_validation$name,
+          
+          dataset_title =
+            dataset_title,
+          
+          updated =
+            as.character(
+              updated_date
+            ),
+          
+          data =
+            csv_data,
+          
+          suggested_types =
+            variable_types
+        )
+      )
+      
+      show_custom_variable_classification_modal()
+    },
+    ignoreInit = TRUE
+  )
   
   observeEvent(input$confirm_add_matrix, {
     
@@ -2332,6 +3294,40 @@ app_server <- function(
   ### Save Matrix ####
   observeEvent(input$save_matrices, {
     
+    config <- config_file()
+    
+    original_matrices <- if (
+      !is.null(config$matrix)
+    ) {
+      as.character(
+        unlist(
+          config$matrix,
+          use.names = FALSE
+        )
+      )
+    } else {
+      character()
+    }
+    
+    original_matrices <- trimws(
+      original_matrices
+    )
+    
+    original_matrices <- original_matrices[
+      nzchar(original_matrices) &
+        !original_matrices %in% c(
+          "EXAMPLETABLE1",
+          "EXAMPLETABLE2"
+        )
+    ]
+    
+    updated_matrices <- matrix_draft()
+    
+    removed_matrices <- setdiff(
+      original_matrices,
+      updated_matrices
+    )
+    
     config_path <- file.path(
       folder(),
       "src",
@@ -2350,7 +3346,7 @@ app_server <- function(
     
     updated_config <- replace_matrix_in_config(
       config_text,
-      matrix_draft()
+      updated_matrices
     )
     
     writeLines(
@@ -2371,14 +3367,47 @@ app_server <- function(
     }
     
     old_wd <- getwd()
-    on.exit(setwd(old_wd), add = TRUE)
+    on.exit(
+      setwd(old_wd),
+      add = TRUE
+    )
     
-    setwd(folder())
+    setwd(
+      folder()
+    )
     
     source(
       data_script,
-      local = new.env(parent = globalenv())
+      local = new.env(
+        parent = globalenv()
+      )
     )
+    
+    #
+    # Only remove old CSV files after data.R has
+    # completed successfully.
+    #
+    if (length(removed_matrices) > 0) {
+      
+      for (matrix_name in removed_matrices) {
+        
+        csv_path <- file.path(
+          folder(),
+          "public",
+          "data",
+          paste0(
+            matrix_name,
+            ".csv"
+          )
+        )
+        
+        if (file.exists(csv_path)) {
+          unlink(
+            csv_path
+          )
+        }
+      }
+    }
     
     loaded_tables_version(
       loaded_tables_version() + 1
@@ -2394,7 +3423,6 @@ app_server <- function(
       "Data Portal tables saved.",
       type = "message"
     )
-    
   })
   
   # Home page design tab ####
@@ -13273,6 +14301,1740 @@ app_server <- function(
           showNotification(
             paste(
               "User notes could not be updated:",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = NULL
+          )
+        }
+      )
+    },
+    ignoreInit = TRUE
+  )
+  
+  ## Custom varibale UI ####
+  
+  output$custom_variable_classification_ui <- renderUI({
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    csv_data <- import_data$data
+    
+    variable_names <- names(
+      csv_data
+    )
+    
+    variable_types <- if (
+      !is.null(import_data$variable_types)
+    ) {
+      import_data$variable_types
+    } else {
+      import_data$suggested_types
+    }
+    
+    tagList(
+      
+      lapply(
+        seq_along(
+          variable_names
+        ),
+        function(index) {
+          
+          variable_name <-
+            variable_names[[index]]
+          
+          values <-
+            csv_data[[
+              variable_name
+            ]]
+          
+          sample_values <- unique(
+            as.character(
+              values[
+                !is.na(values)
+              ]
+            )
+          )
+          
+          sample_values <- head(
+            sample_values,
+            3
+          )
+          
+          sample_text <- if (
+            length(sample_values) > 0
+          ) {
+            paste(
+              sample_values,
+              collapse = ", "
+            )
+          } else {
+            "No non-missing values"
+          }
+          
+          tags$div(
+            class = "well well-sm",
+            
+            fluidRow(
+              
+              column(
+                width = 7,
+                
+                tags$strong(
+                  variable_name
+                ),
+                
+                tags$div(
+                  class = "help-block",
+                  paste0(
+                    "Example values: ",
+                    sample_text
+                  )
+                )
+              ),
+              
+              column(
+                width = 5,
+                
+                selectInput(
+                  inputId = paste0(
+                    "custom_variable_type_",
+                    index
+                  ),
+                  label = "Type",
+                  choices = c(
+                    "Categorical" =
+                      "categorical",
+                    "Geography" =
+                      "geography",
+                    "Date / time" =
+                      "date",
+                    "Numeric" =
+                      "numeric"
+                  ),
+                  selected =
+                    variable_types[[
+                      variable_name
+                    ]],
+                  width = "100%"
+                )
+              )
+            )
+          )
+        }
+      )
+    )
+  })
+  
+  observeEvent(
+    input$continue_custom_variable_classification,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      
+      variable_names <- names(
+        import_data$data
+      )
+      
+      selected_types <- vapply(
+        seq_along(
+          variable_names
+        ),
+        function(index) {
+          
+          selected_type <- input[[
+            paste0(
+              "custom_variable_type_",
+              index
+            )
+          ]]
+          
+          if (
+            is.null(selected_type) ||
+            !selected_type %in% c(
+              "categorical",
+              "geography",
+              "date",
+              "numeric"
+            )
+          ) {
+            return("")
+          }
+          
+          selected_type
+        },
+        character(1)
+      )
+      
+      names(selected_types) <-
+        variable_names
+      
+      if (any(!nzchar(
+        selected_types
+      ))) {
+        showNotification(
+          "Classify every variable before continuing.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      numeric_columns <- names(
+        selected_types[
+          selected_types == "numeric"
+        ]
+      )
+      
+      if (length(numeric_columns) == 0) {
+        showNotification(
+          paste(
+            "At least one variable must be classified as Numeric.",
+            "Numeric variables contain the values used in dashboard calculations."
+          ),
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      import_data$variable_types <-
+        selected_types
+      
+      import_data$numeric_columns <-
+        numeric_columns
+      
+      pending_custom_import(
+        import_data
+      )
+      
+      showNotification(
+        paste0(
+          length(numeric_columns),
+          if (
+            length(numeric_columns) == 1
+          ) {
+            " numeric column will be grouped under Values."
+          } else {
+            " numeric columns will be grouped under Values."
+          }
+        ),
+        type = "message"
+      )
+      
+      categorical_columns <- names(
+        selected_types[
+          selected_types == "categorical"
+        ]
+      )
+      
+      category_orders <- custom_category_orders()
+      
+      for (column_name in categorical_columns) {
+        
+        if (is.null(category_orders[[column_name]])) {
+          
+          values <- as.character(
+            import_data$data[[column_name]]
+          )
+          
+          values <- values[
+            !is.na(values) &
+              nzchar(trimws(values))
+          ]
+          
+          category_orders[[column_name]] <- unique(
+            values
+          )
+        }
+      }
+      
+      category_orders <- category_orders[
+        names(category_orders) %in%
+          categorical_columns
+      ]
+      
+      custom_category_orders(
+        category_orders
+      )
+      
+      show_custom_category_order_modal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  show_custom_category_order_modal <- function() {
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    categorical_columns <- names(
+      import_data$variable_types[
+        import_data$variable_types == "categorical"
+      ]
+    )
+    
+    if (length(categorical_columns) == 0) {
+      show_custom_date_configuration_modal()
+      return()
+    }
+    
+    showModal(
+      modalDialog(
+        title = "Order categorical values",
+        
+        tags$p(
+          paste(
+            "Set the order in which categorical values should",
+            "appear in filters, charts and metadata."
+          )
+        ),
+        
+        tags$p(
+          class = "help-block",
+          paste(
+            "Values initially appear in the order in which",
+            "they first occur in the CSV."
+          )
+        ),
+        
+        uiOutput(
+          "custom_category_order_ui"
+        ),
+        
+        footer = tagList(
+          actionButton(
+            inputId = "back_custom_category_order",
+            label = "Back"
+          ),
+          
+          actionButton(
+            inputId = "continue_custom_category_order",
+            label = "Continue",
+            class = "btn-primary"
+          )
+        ),
+        
+        size = "l",
+        easyClose = FALSE
+      )
+    )
+  }
+  
+  output$custom_category_order_ui <- renderUI({
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    category_orders <- custom_category_orders()
+    
+    categorical_columns <- names(
+      import_data$variable_types[
+        import_data$variable_types == "categorical"
+      ]
+    )
+    
+    tagList(
+      lapply(
+        categorical_columns,
+        function(column_name) {
+          
+          values <- category_orders[[
+            column_name
+          ]]
+          
+          tags$div(
+            class = "panel panel-default",
+            
+            tags$div(
+              class = "panel-heading",
+              
+              tags$strong(
+                column_name
+              )
+            ),
+            
+            tags$div(
+              class = "panel-body",
+              
+              lapply(
+                seq_along(values),
+                function(index) {
+                  
+                  fluidRow(
+                    
+                    column(
+                      width = 2,
+                      
+                      tags$strong(
+                        index
+                      )
+                    ),
+                    
+                    column(
+                      width = 7,
+                      
+                      tags$span(
+                        values[[index]]
+                      )
+                    ),
+                    
+                    column(
+                      width = 3,
+                      
+                      actionButton(
+                        inputId = paste0(
+                          "custom_category_up_",
+                          make.names(
+                            column_name
+                          ),
+                          "_",
+                          index
+                        ),
+                        label = NULL,
+                        icon = icon(
+                          "arrow-up"
+                        ),
+                        class = "btn-default btn-sm",
+                        disabled = index == 1
+                      ),
+                      
+                      actionButton(
+                        inputId = paste0(
+                          "custom_category_down_",
+                          make.names(
+                            column_name
+                          ),
+                          "_",
+                          index
+                        ),
+                        label = NULL,
+                        icon = icon(
+                          "arrow-down"
+                        ),
+                        class = "btn-default btn-sm",
+                        disabled =
+                          index == length(values)
+                      )
+                    )
+                  )
+                }
+              )
+            )
+          )
+        }
+      )
+    )
+  })
+  
+  observe({
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    category_orders <- custom_category_orders()
+    
+    categorical_columns <- names(
+      import_data$variable_types[
+        import_data$variable_types == "categorical"
+      ]
+    )
+    
+    for (column_name in categorical_columns) {
+      
+      values <- category_orders[[
+        column_name
+      ]]
+      
+      for (index in seq_along(values)) {
+        
+        local({
+          
+          current_column <- column_name
+          current_index <- index
+          
+          safe_column <- make.names(
+            current_column
+          )
+          
+          up_id <- paste0(
+            "custom_category_up_",
+            safe_column,
+            "_",
+            current_index
+          )
+          
+          down_id <- paste0(
+            "custom_category_down_",
+            safe_column,
+            "_",
+            current_index
+          )
+          
+          observeEvent(
+            input[[up_id]],
+            {
+              
+              if (current_index <= 1) {
+                return()
+              }
+              
+              orders <- custom_category_orders()
+              
+              current_values <- orders[[
+                current_column
+              ]]
+              
+              swap_index <- current_index - 1
+              
+              current_values[
+                c(
+                  swap_index,
+                  current_index
+                )
+              ] <- current_values[
+                c(
+                  current_index,
+                  swap_index
+                )
+              ]
+              
+              orders[[
+                current_column
+              ]] <- current_values
+              
+              custom_category_orders(
+                orders
+              )
+            },
+            ignoreInit = TRUE
+          )
+          
+          observeEvent(
+            input[[down_id]],
+            {
+              
+              orders <- custom_category_orders()
+              
+              current_values <- orders[[
+                current_column
+              ]]
+              
+              if (
+                current_index >=
+                length(current_values)
+              ) {
+                return()
+              }
+              
+              swap_index <- current_index + 1
+              
+              current_values[
+                c(
+                  current_index,
+                  swap_index
+                )
+              ] <- current_values[
+                c(
+                  swap_index,
+                  current_index
+                )
+              ]
+              
+              orders[[
+                current_column
+              ]] <- current_values
+              
+              custom_category_orders(
+                orders
+              )
+            },
+            ignoreInit = TRUE
+          )
+        })
+      }
+    }
+  })
+  
+  observeEvent(
+    input$back_custom_category_order,
+    {
+      removeModal()
+      
+      show_custom_variable_classification_modal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  observeEvent(
+    input$continue_custom_category_order,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      
+      category_orders <- custom_category_orders()
+      
+      import_data$category_orders <-
+        category_orders
+      
+      pending_custom_import(
+        import_data
+      )
+      
+      removeModal()
+      
+      show_custom_date_configuration_modal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  show_custom_date_configuration_modal <- function() {
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    date_columns <- names(
+      import_data$variable_types[
+        import_data$variable_types == "date"
+      ]
+    )
+    
+    if (length(date_columns) == 0) {
+      show_custom_geography_configuration_modal()
+      return()
+    }
+    
+    showModal(
+      modalDialog(
+        title = "Configure date variables",
+        
+        tags$p(
+          paste(
+            "For each date variable, select how frequently",
+            "the data is reported."
+          )
+        ),
+        
+        tagList(
+          lapply(
+            seq_along(date_columns),
+            function(index) {
+              
+              column_name <- date_columns[[index]]
+              
+              tags$div(
+                class = "panel panel-default",
+                
+                tags$div(
+                  class = "panel-heading",
+                  
+                  tags$strong(
+                    column_name
+                  )
+                ),
+                
+                tags$div(
+                  class = "panel-body",
+                  
+                  selectInput(
+                    inputId = paste0(
+                      "custom_date_frequency_",
+                      index
+                    ),
+                    label = "Frequency",
+                    choices = c(
+                      "Yearly" = "yearly",
+                      "Quarterly" = "quarterly",
+                      "Monthly" = "monthly",
+                      "Weekly" = "weekly"
+                    ),
+                    selected = suggest_custom_date_frequency(
+                      column_name
+                    ),
+                    width = "100%"
+                  )
+                )
+              )
+            }
+          )
+        ),
+        
+        footer = tagList(
+          actionButton(
+            inputId = "back_custom_date_configuration",
+            label = "Back"
+          ),
+          
+          actionButton(
+            inputId = "continue_custom_date_configuration",
+            label = "Continue",
+            class = "btn-primary"
+          )
+        ),
+        
+        size = "l",
+        easyClose = FALSE
+      )
+    )
+  }
+  
+  observeEvent(
+    input$back_custom_date_configuration,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      
+      variable_types <- import_data$variable_types
+      
+      removeModal()
+      
+      if (any(
+        variable_types == "categorical"
+      )) {
+        
+        show_custom_category_order_modal()
+        
+      } else {
+        
+        show_custom_variable_classification_modal()
+      }
+    },
+    ignoreInit = TRUE
+  )
+  
+  observeEvent(
+    input$continue_custom_date_configuration,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      
+      date_columns <- names(
+        import_data$variable_types[
+          import_data$variable_types == "date"
+        ]
+      )
+      
+      date_frequencies <- vapply(
+        seq_along(
+          date_columns
+        ),
+        function(index) {
+          
+          selected_frequency <- input[[
+            paste0(
+              "custom_date_frequency_",
+              index
+            )
+          ]]
+          
+          if (
+            is.null(selected_frequency) ||
+            !selected_frequency %in% c(
+              "yearly",
+              "quarterly",
+              "monthly",
+              "weekly"
+            )
+          ) {
+            return("")
+          }
+          
+          selected_frequency
+        },
+        character(1)
+      )
+      
+      names(date_frequencies) <-
+        date_columns
+      
+      if (any(!nzchar(
+        date_frequencies
+      ))) {
+        showNotification(
+          "Choose a frequency for every Date / time variable.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      import_data$date_frequencies <-
+        date_frequencies
+      
+      pending_custom_import(
+        import_data
+      )
+      
+      showNotification(
+        "Date / time configuration saved.",
+        type = "message"
+      )
+      
+      removeModal()
+      
+      show_custom_geography_configuration_modal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  show_custom_geography_configuration_modal <- function() {
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    geography_columns <- names(
+      import_data$variable_types[
+        import_data$variable_types == "geography"
+      ]
+    )
+    
+    if (length(geography_columns) == 0) {
+      show_custom_import_review_modal()
+      return()
+    }
+    
+    showModal(
+      modalDialog(
+        title = "Configure geography variables",
+        
+        tags$p(
+          paste(
+            "For each geography variable, select the",
+            "geography type represented by the codes in the CSV."
+          )
+        ),
+        
+        tagList(
+          lapply(
+            seq_along(geography_columns),
+            function(index) {
+              
+              column_name <- geography_columns[[index]]
+              
+              tags$div(
+                class = "panel panel-default",
+                
+                tags$div(
+                  class = "panel-heading",
+                  
+                  tags$strong(
+                    column_name
+                  )
+                ),
+                
+                tags$div(
+                  class = "panel-body",
+                  
+                  selectInput(
+                    inputId = paste0(
+                      "custom_geography_type_",
+                      index
+                    ),
+                    label = "Geography type",
+                    choices = custom_geography_choices(),
+                    selected = suggest_custom_geography_type(
+                      import_data$data[[column_name]]
+                    ),
+                    width = "100%"
+                  )
+                )
+              )
+            }
+          )
+        ),
+        
+        footer = tagList(
+          actionButton(
+            inputId = "back_custom_geography_configuration",
+            label = "Back"
+          ),
+          
+          actionButton(
+            inputId = "continue_custom_geography_configuration",
+            label = "Continue",
+            class = "btn-primary"
+          )
+        ),
+        
+        size = "l",
+        easyClose = FALSE
+      )
+    )
+  }
+  
+  observeEvent(
+    input$back_custom_geography_configuration,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      
+      variable_types <- import_data$variable_types
+      
+      removeModal()
+      
+      if (any(
+        variable_types == "date"
+      )) {
+        
+        show_custom_date_configuration_modal()
+        
+      } else if (any(
+        variable_types == "categorical"
+      )) {
+        
+        show_custom_category_order_modal()
+        
+      } else {
+        
+        show_custom_variable_classification_modal()
+      }
+    },
+    ignoreInit = TRUE
+  )
+  
+  observeEvent(
+    input$continue_custom_geography_configuration,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      
+      geography_columns <- names(
+        import_data$variable_types[
+          import_data$variable_types == "geography"
+        ]
+      )
+      
+      lookup <- read_custom_geography_lookup()
+      
+      selected_geography_types <- vapply(
+        seq_along(
+          geography_columns
+        ),
+        function(index) {
+          
+          selected_type <- input[[
+            paste0(
+              "custom_geography_type_",
+              index
+            )
+          ]]
+          
+          if (
+            is.null(selected_type) ||
+            !selected_type %in% c(
+              "AA",
+              "AA2024",
+              "LGD2014",
+              "HSCT"
+            )
+          ) {
+            return("")
+          }
+          
+          selected_type
+        },
+        character(1)
+      )
+      
+      names(selected_geography_types) <-
+        geography_columns
+      
+      if (any(!nzchar(
+        selected_geography_types
+      ))) {
+        showNotification(
+          "Choose a geography type for every geography variable.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      ni_codes <- lookup$geography_code[
+        lookup$geography_type == "NI"
+      ]
+      
+      for (column_name in geography_columns) {
+        
+        geography_type <-
+          selected_geography_types[[
+            column_name
+          ]]
+        
+        valid_codes <- c(
+          lookup$geography_code[
+            lookup$geography_type ==
+              geography_type
+          ],
+          ni_codes
+        )
+        
+        csv_codes <- unique(
+          trimws(
+            as.character(
+              import_data$data[[
+                column_name
+              ]]
+            )
+          )
+        )
+        
+        csv_codes <- csv_codes[
+          !is.na(csv_codes) &
+            nzchar(csv_codes)
+        ]
+        
+        invalid_codes <- setdiff(
+          csv_codes,
+          valid_codes
+        )
+        
+        if (length(invalid_codes) > 0) {
+          showNotification(
+            paste0(
+              "The geography variable '",
+              column_name,
+              "' contains codes that are not valid for the selected geography type: ",
+              paste(
+                invalid_codes,
+                collapse = ", "
+              )
+            ),
+            type = "error",
+            duration = NULL
+          )
+          
+          return()
+        }
+      }
+      
+      import_data$geography_types <-
+        selected_geography_types
+      
+      pending_custom_import(
+        import_data
+      )
+      
+      pending_custom_import(
+        import_data
+      )
+      
+      removeModal()
+      
+      show_custom_import_review_modal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  show_custom_import_review_modal <- function() {
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    showModal(
+      modalDialog(
+        title = paste0(
+          "Review import - ",
+          import_data$dataset_name
+        ),
+        
+        tags$p(
+          paste(
+            "Review the dataset configuration below before importing it",
+            "into the dashboard."
+          )
+        ),
+        
+        uiOutput(
+          "custom_import_review_ui"
+        ),
+        
+        footer = tagList(
+          actionButton(
+            inputId = "back_custom_import_review",
+            label = "Back"
+          ),
+          
+          actionButton(
+            inputId = "confirm_custom_import",
+            label = "Import dataset",
+            class = "btn-primary"
+          )
+        ),
+        
+        size = "l",
+        easyClose = FALSE
+      )
+    )
+  }
+  
+  
+  output$custom_import_review_ui <- renderUI({
+    
+    import_data <- pending_custom_import()
+    
+    req(import_data)
+    
+    variable_types <- import_data$variable_types
+    
+    categorical_columns <- names(
+      variable_types[
+        variable_types == "categorical"
+      ]
+    )
+    
+    date_columns <- names(
+      variable_types[
+        variable_types == "date"
+      ]
+    )
+    
+    geography_columns <- names(
+      variable_types[
+        variable_types == "geography"
+      ]
+    )
+    
+    numeric_columns <- names(
+      variable_types[
+        variable_types == "numeric"
+      ]
+    )
+    
+    geography_choices <-
+      custom_geography_choices()
+    
+    geography_labels <- stats::setNames(
+      names(geography_choices),
+      unname(geography_choices)
+    )
+    
+    variable_rows <- lapply(
+      names(variable_types),
+      function(column_name) {
+        
+        variable_type <-
+          variable_types[[column_name]]
+        
+        detail <- switch(
+          variable_type,
+          
+          categorical = {
+            
+            values <- import_data$category_orders[[
+              column_name
+            ]]
+            
+            paste0(
+              length(values),
+              if (length(values) == 1) {
+                " category"
+              } else {
+                " categories"
+              },
+              ": ",
+              paste(
+                values,
+                collapse = ", "
+              )
+            )
+          },
+          
+          date = {
+            
+            frequency <- import_data$date_frequencies[[
+              column_name
+            ]]
+            
+            frequency_labels <- c(
+              yearly = "Yearly",
+              quarterly = "Quarterly",
+              monthly = "Monthly",
+              weekly = "Weekly"
+            )
+            
+            unname(
+              frequency_labels[[
+                frequency
+              ]]
+            )
+          },
+          
+          geography = {
+            
+            geography_type <- import_data$geography_types[[
+              column_name
+            ]]
+            
+            unname(
+              geography_labels[[
+                geography_type
+              ]]
+            )
+          },
+          
+          numeric = {
+            "Grouped under Values"
+          },
+          
+          ""
+        )
+        
+        tags$tr(
+          tags$td(
+            column_name
+          ),
+          tags$td(
+            switch(
+              variable_type,
+              categorical = "Categorical",
+              date = "Date / time",
+              geography = "Geography",
+              numeric = "Numeric",
+              variable_type
+            )
+          ),
+          tags$td(
+            detail
+          )
+        )
+      }
+    )
+    
+    tagList(
+      
+      tags$div(
+        class = "panel panel-default",
+        
+        tags$div(
+          class = "panel-heading",
+          tags$strong(
+            "Dataset"
+          )
+        ),
+        
+        tags$div(
+          class = "panel-body",
+          
+          tags$p(
+            tags$strong("Short name: "),
+            import_data$dataset_name
+          ),
+          
+          tags$p(
+            tags$strong("Title: "),
+            import_data$dataset_title
+          ),
+          
+          tags$p(
+            tags$strong("Updated: "),
+            import_data$updated
+          ),
+          
+          tags$p(
+            style = "margin-bottom: 0;",
+            tags$strong("Source file: "),
+            import_data$original_filename
+          )
+        )
+      ),
+      
+      tags$div(
+        class = "panel panel-default",
+        
+        tags$div(
+          class = "panel-heading",
+          tags$strong(
+            "Variables"
+          )
+        ),
+        
+        tags$div(
+          class = "panel-body",
+          
+          tags$table(
+            class = "table table-striped table-condensed",
+            
+            tags$thead(
+              tags$tr(
+                tags$th("Variable"),
+                tags$th("Type"),
+                tags$th("Configuration")
+              )
+            ),
+            
+            tags$tbody(
+              variable_rows
+            )
+          ),
+          
+          tags$p(
+            class = "help-block",
+            style = "margin-bottom: 0;",
+            paste0(
+              length(numeric_columns),
+              if (length(numeric_columns) == 1) {
+                " numeric column will be grouped"
+              } else {
+                " numeric columns will be grouped"
+              },
+              ' under the synthetic "Values" variable.'
+            )
+          )
+        )
+      )
+    )
+  })
+  
+  
+  observeEvent(
+    input$back_custom_import_review,
+    {
+      
+      removeModal()
+      
+      show_custom_geography_configuration_modal()
+    },
+    ignoreInit = TRUE
+  )
+  
+  observeEvent(
+    input$confirm_custom_import,
+    {
+      
+      import_data <- pending_custom_import()
+      
+      req(import_data)
+      req(folder())
+      
+      metadata <- tryCatch(
+        build_custom_dataset_metadata(
+          import_data
+        ),
+        error = function(error) {
+          
+          showNotification(
+            paste(
+              "Could not build dataset metadata:",
+              conditionMessage(error)
+            ),
+            type = "error",
+            duration = NULL
+          )
+          
+          NULL
+        }
+      )
+      
+      if (is.null(metadata)) {
+        return()
+      }
+      
+      dataset_name <- import_data$dataset_name
+      
+      data_dir <- file.path(
+        folder(),
+        "public",
+        "data"
+      )
+      
+      if (!dir.exists(data_dir)) {
+        dir.create(
+          data_dir,
+          recursive = TRUE
+        )
+      }
+      
+      csv_path <- file.path(
+        data_dir,
+        paste0(
+          dataset_name,
+          ".csv"
+        )
+      )
+      
+      data_json_path <- file.path(
+        data_dir,
+        "data.json"
+      )
+      
+      config_path <- file.path(
+        folder(),
+        "src",
+        "config",
+        "config.js"
+      )
+      
+      if (!file.exists(config_path)) {
+        showNotification(
+          "config.js was not found.",
+          type = "error"
+        )
+        
+        return()
+      }
+      
+      #
+      # Preserve existing files so the import can be
+      # completely rolled back if any write fails.
+      #
+      original_config <- readLines(
+        config_path,
+        warn = FALSE,
+        encoding = "UTF-8"
+      )
+      
+      data_json_existed <- file.exists(
+        data_json_path
+      )
+      
+      original_data_json <- if (
+        data_json_existed
+      ) {
+        readLines(
+          data_json_path,
+          warn = FALSE,
+          encoding = "UTF-8"
+        )
+      } else {
+        character()
+      }
+      
+      csv_existed <- file.exists(
+        csv_path
+      )
+      
+      original_csv <- if (
+        csv_existed
+      ) {
+        
+        connection <- file(
+          csv_path,
+          open = "rb"
+        )
+        
+        on.exit(
+          close(connection),
+          add = TRUE
+        )
+        
+        csv_bytes <- readBin(
+          connection,
+          what = "raw",
+          n = file.info(csv_path)$size
+        )
+        
+        close(connection)
+        
+        on.exit(
+          NULL,
+          add = FALSE
+        )
+        
+        csv_bytes
+        
+      } else {
+        raw()
+      }
+      
+      #
+      # Read existing custom names from config.
+      #
+      config <- config_file()
+      
+      existing_custom <- if (
+        !is.null(config$custom)
+      ) {
+        as.character(
+          unlist(
+            config$custom,
+            use.names = FALSE
+          )
+        )
+      } else {
+        character()
+      }
+      
+      existing_custom <- trimws(
+        existing_custom
+      )
+      
+      existing_custom <- existing_custom[
+        nzchar(existing_custom)
+      ]
+      
+      updated_custom <- unique(
+        c(
+          existing_custom,
+          dataset_name
+        )
+      )
+      
+      #
+      # Build updated config.js.
+      #
+      config_text <- paste(
+        original_config,
+        collapse = "\n"
+      )
+      
+      updated_config <- replace_custom_in_config(
+        config_text = config_text,
+        custom_tables = updated_custom
+      )
+      
+      #
+      # Read the existing combined metadata file.
+      #
+      all_data <- if (
+        data_json_existed &&
+        file.info(data_json_path)$size > 0
+      ) {
+        
+        tryCatch(
+          {
+            jsonlite::read_json(
+              data_json_path,
+              simplifyVector = FALSE
+            )
+          },
+          error = function(error) {
+            
+            showNotification(
+              paste(
+                "The existing data.json could not be read:",
+                conditionMessage(error)
+              ),
+              type = "error",
+              duration = NULL
+            )
+            
+            NULL
+          }
+        )
+        
+      } else {
+        
+        list()
+      }
+      
+      if (is.null(all_data)) {
+        return()
+      }
+      
+      #
+      # Add the new custom dataset as another top-level
+      # object alongside Data Portal matrices.
+      #
+      all_data[[
+        dataset_name
+      ]] <- metadata
+      
+      tryCatch(
+        {
+          
+          #
+          # Write imported CSV.
+          #
+          csv_output <- import_data$data
+          
+          geography_columns <- names(
+            import_data$variable_types[
+              import_data$variable_types == "geography"
+            ]
+          )
+          
+          if (length(geography_columns) > 0) {
+            
+            geography_lookup <- read_custom_geography_lookup()
+            
+            for (column_name in geography_columns) {
+              
+              geography_type <- import_data$geography_types[[
+                column_name
+              ]]
+              
+              relevant_lookup <- geography_lookup[
+                geography_lookup$geography_type %in%
+                  c(
+                    geography_type,
+                    "NI"
+                  ),
+                ,
+                drop = FALSE
+              ]
+              
+              geography_names <- stats::setNames(
+                relevant_lookup$geography_name,
+                relevant_lookup$geography_code
+              )
+              
+              current_codes <- trimws(
+                as.character(
+                  csv_output[[
+                    column_name
+                  ]]
+                )
+              )
+              
+              matched_names <- unname(
+                geography_names[
+                  current_codes
+                ]
+              )
+              
+              #
+              # Geography codes have already been validated earlier,
+              # so every non-missing code should have a matching name.
+              #
+              keep_missing <- is.na(
+                csv_output[[
+                  column_name
+                ]]
+              )
+              
+              csv_output[[
+                column_name
+              ]] <- matched_names
+              
+              csv_output[[
+                column_name
+              ]][keep_missing] <- NA_character_
+            }
+          }
+          
+          utils::write.csv(
+            csv_output,
+            csv_path,
+            row.names = FALSE,
+            na = ""
+          )
+          
+          #
+          # Update config$custom.
+          #
+          writeLines(
+            updated_config,
+            config_path,
+            useBytes = TRUE
+          )
+          
+          #
+          # Update combined data.json.
+          #
+          jsonlite::write_json(
+            all_data,
+            data_json_path,
+            pretty = TRUE,
+            auto_unbox = TRUE
+          )
+          
+          #
+          # Refresh BuildR state.
+          #
+          config_version(
+            config_version() + 1
+          )
+          
+          loaded_tables_version(
+            loaded_tables_version() + 1
+          )
+          
+          pending_custom_import(
+            NULL
+          )
+          
+          custom_category_orders(
+            list()
+          )
+          
+          removeModal()
+          
+          showNotification(
+            paste(
+              dataset_name,
+              "was imported successfully."
+            ),
+            type = "message"
+          )
+        },
+        
+        error = function(error) {
+          
+          #
+          # Restore config.js.
+          #
+          writeLines(
+            original_config,
+            config_path,
+            useBytes = TRUE
+          )
+          
+          #
+          # Restore or remove data.json.
+          #
+          if (data_json_existed) {
+            
+            writeLines(
+              original_data_json,
+              data_json_path,
+              useBytes = TRUE
+            )
+            
+          } else if (file.exists(data_json_path)) {
+            
+            unlink(
+              data_json_path
+            )
+          }
+          
+          #
+          # Restore or remove imported CSV.
+          #
+          if (csv_existed) {
+            
+            connection <- file(
+              csv_path,
+              open = "wb"
+            )
+            
+            writeBin(
+              original_csv,
+              connection
+            )
+            
+            close(connection)
+            
+          } else if (file.exists(csv_path)) {
+            
+            unlink(
+              csv_path
+            )
+          }
+          
+          showNotification(
+            paste(
+              "The CSV import was rolled back after an error:",
               conditionMessage(error)
             ),
             type = "error",

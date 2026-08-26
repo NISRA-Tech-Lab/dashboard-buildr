@@ -1,0 +1,54 @@
+geography_type,geography_code,geography_name
+NI,N92000002,Northern Ireland 
+LGD2014,N09000001,Antrim and Newtownabbey
+LGD2014,N09000002,"Armagh, Banbridge and Craigavon"
+LGD2014,N09000003,Belfast
+LGD2014,N09000004,Causeway Coast and Glens
+LGD2014,N09000005,Derry and Strabane
+LGD2014,N09000006,Fermanagh and Omagh
+LGD2014,N09000007,Lisburn and Castlereagh
+LGD2014,N09000008,Mid and East Antrim
+LGD2014,N09000009,Mid Ulster
+LGD2014,N09000010,"Newry, Mourne and Down"
+LGD2014,N09000011,Ards and North Down
+AA,N06000001,Belfast East
+AA,N06000002,Belfast North
+AA,N06000003,Belfast South
+AA,N06000004,Belfast West
+AA,N06000005,East Antrim
+AA,N06000006,East Londonderry
+AA,N06000007,Fermanagh and South Tyrone
+AA,N06000008,Foyle
+AA,N06000009,Lagan Valley
+AA,N06000010,Mid Ulster
+AA,N06000011,Newry and Armagh
+AA,N06000012,North Antrim
+AA,N06000013,North Down
+AA,N06000014,South Antrim
+AA,N06000015,South Down
+AA,N06000016,Strangford
+AA,N06000017,Upper Bann
+AA,N06000018,West Tyrone
+AA2024,N05000001,Belfast East
+AA2024,N05000002,Belfast North
+AA2024,N05000003,Belfast South and Mid Down
+AA2024,N05000004,Belfast West
+AA2024,N05000005,East Antrim
+AA2024,N05000006,East Londonderry
+AA2024,N05000007,Fermanagh and South Tyrone
+AA2024,N05000008,Foyle
+AA2024,N05000009,Lagan Valley
+AA2024,N05000010,Mid Ulster
+AA2024,N05000011,Newry and Armagh
+AA2024,N05000012,North Antrim
+AA2024,N05000013,North Down
+AA2024,N05000014,South Antrim
+AA2024,N05000015,South Down
+AA2024,N05000016,Strangford
+AA2024,N05000017,Upper Bann
+AA2024,N05000018,West Tyrone
+HSCT,BHSCT,Belfast HSCT
+HSCT,NHSCT,Northern HSCT
+HSCT,SEHSCT,South Eastern HSCT
+HSCT,SHSCT,Southern HSCT
+HSCT,WHSCT,Western HSCT

@@ -1,6 +1,6 @@
 Package: dashboardBuildR
 Title: Build NISRA Data Dashboards
-Version: 0.2.5
+Version: 0.3.0
 Authors@R:
     person(
         given = "NISRA",
