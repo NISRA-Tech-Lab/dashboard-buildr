@@ -5419,67 +5419,7 @@ app_server <- function(
       length(values)
     )
     
-    session$onFlushed(
-      function() {
-        
-        for (card_number in seq_along(values)) {
-          
-          current <- values[[card_number]]
-          
-          updateTextInput(
-            session = session,
-            inputId = paste0(
-              "page_card_",
-              card_number,
-              "_top_line"
-            ),
-            value = current$top_line
-          )
-          
-          updateTextInput(
-            session = session,
-            inputId = paste0(
-              "page_card_",
-              card_number,
-              "_unit"
-            ),
-            value = current$unit
-          )
-          
-          updateTextInput(
-            session = session,
-            inputId = paste0(
-              "page_card_",
-              card_number,
-              "_bottom_line"
-            ),
-            value = current$bottom_line
-          )
-          
-          updateSelectInput(
-            session = session,
-            inputId = paste0(
-              "page_card_",
-              card_number,
-              "_background"
-            ),
-            selected = current$background
-          )
-          
-          shinyjs::runjs(
-            sprintf(
-              "$('#page_card_%d_value').val(%s);",
-              card_number,
-              jsonlite::toJSON(
-                current$value,
-                auto_unbox = TRUE
-              )
-            )
-          )
-        }
-      },
-      once = TRUE
-    )
+    
     
     strapline <- tryCatch(
       read_page_strapline(
@@ -5785,13 +5725,23 @@ app_server <- function(
   })
   
   ### Page card accordions ####
+  page_card_ui_state <- new.env(
+    parent = emptyenv()
+  )
+  
+  page_card_ui_state$page <- NULL
+  
   output$page_card_editors <- renderUI({
     
-    req(selected_page_design())
+    current_page <- selected_page_design()
+    
+    req(current_page)
     
     card_count <- page_card_editor_count()
     
     if (card_count < 1) {
+      page_card_ui_state$page <- current_page
+      
       return(
         tags$em(
           "No page cards were found."
@@ -5801,9 +5751,14 @@ app_server <- function(
     
     values <- page_card_values()
     
+    preserve_live_values <- identical(
+      page_card_ui_state$page,
+      current_page
+    )
+    
     accordion_id <- "page-card-accordion"
     
-    tags$div(
+    ui <- tags$div(
       id = accordion_id,
       class = "panel-group",
       role = "tablist",
@@ -5839,63 +5794,66 @@ app_server <- function(
           }
           
           #
-          # Preserve unsaved editor values if this accordion is
-          # rebuilt after a calculation.
+          # Preserve unsaved editor values only when this
+          # accordion is rebuilding for the same page.
           #
-          live_top_line <- isolate(
-            input[[
-              paste0(
-                "page_card_",
-                card_number,
-                "_top_line"
-              )
-            ]]
-          )
-          
-          if (!is.null(live_top_line)) {
-            current$top_line <- live_top_line
-          }
-          
-          live_unit <- isolate(
-            input[[
-              paste0(
-                "page_card_",
-                card_number,
-                "_unit"
-              )
-            ]]
-          )
-          
-          if (!is.null(live_unit)) {
-            current$unit <- live_unit
-          }
-          
-          live_bottom_line <- isolate(
-            input[[
-              paste0(
-                "page_card_",
-                card_number,
-                "_bottom_line"
-              )
-            ]]
-          )
-          
-          if (!is.null(live_bottom_line)) {
-            current$bottom_line <- live_bottom_line
-          }
-          
-          live_background <- isolate(
-            input[[
-              paste0(
-                "page_card_",
-                card_number,
-                "_background"
-              )
-            ]]
-          )
-          
-          if (!is.null(live_background)) {
-            current$background <- live_background
+          if (preserve_live_values) {
+            
+            live_top_line <- isolate(
+              input[[
+                paste0(
+                  "page_card_",
+                  card_number,
+                  "_top_line"
+                )
+              ]]
+            )
+            
+            if (!is.null(live_top_line)) {
+              current$top_line <- live_top_line
+            }
+            
+            live_unit <- isolate(
+              input[[
+                paste0(
+                  "page_card_",
+                  card_number,
+                  "_unit"
+                )
+              ]]
+            )
+            
+            if (!is.null(live_unit)) {
+              current$unit <- live_unit
+            }
+            
+            live_bottom_line <- isolate(
+              input[[
+                paste0(
+                  "page_card_",
+                  card_number,
+                  "_bottom_line"
+                )
+              ]]
+            )
+            
+            if (!is.null(live_bottom_line)) {
+              current$bottom_line <- live_bottom_line
+            }
+            
+            live_background <- isolate(
+              input[[
+                paste0(
+                  "page_card_",
+                  card_number,
+                  "_background"
+                )
+              ]]
+            )
+            
+            if (!is.null(live_background)) {
+              current$background <- live_background
+            }
           }
           
           collapse_id <- paste0(
@@ -6089,6 +6047,10 @@ app_server <- function(
         }
       )
     )
+    
+    page_card_ui_state$page <- current_page
+    
+    ui
   })
   
   lapply(
