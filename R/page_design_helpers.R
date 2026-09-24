@@ -949,7 +949,8 @@ update_page_card_body <- function(
     top_line = "",
     unit = "",
     bottom_line = "",
-    background = "blue"
+    background = "blue",
+    year_prefix = NULL
 ) {
   
   paths <- page_design_paths(
@@ -1073,11 +1074,13 @@ update_page_card_body <- function(
   ] <- card_line
   
   parsed_top <- parse_homepage_year_tags(
-    top_line
+    top_line,
+    year_prefix = year_prefix
   )
   
   parsed_bottom <- parse_homepage_year_tags(
-    bottom_line
+    bottom_line,
+    year_prefix = year_prefix
   )
   
   escaped_unit <- as.character(
@@ -1610,9 +1613,26 @@ update_page_card_value_js <- function(
       
       js_values <- vapply(
         selected_values,
-        javascript_filter_value,
-        character(1),
-        is_year = is_year_filter
+        function(value) {
+          
+          if (isTRUE(is_year_filter)) {
+            
+            dynamic_year_value <- javascript_dynamic_year_value(
+              value = value,
+              year_prefix = year_prefix
+            )
+            
+            if (!is.null(dynamic_year_value)) {
+              return(dynamic_year_value)
+            }
+          }
+          
+          javascript_filter_value(
+            value,
+            is_year = is_year_filter
+          )
+        },
+        character(1)
       )
       
       if (length(js_values) == 1) {
@@ -1874,6 +1894,14 @@ update_page_card_value_js <- function(
       character()
     }
   )
+  
+  if (isTRUE(use_matrix_years)) {
+    
+    updated_js <- ensure_matrix_year_variables_after_read_data(
+      js_lines = updated_js,
+      matrix = matrix
+    )
+  }
   
   writeLines(
     updated_js,

@@ -6145,7 +6145,8 @@ app_server <- function(
                   top_line = top_line,
                   unit = unit,
                   bottom_line = bottom_line,
-                  background = background
+                  background = background,
+                  year_prefix = year_prefix
                 )
                 
                 update_page_card_value_js(
