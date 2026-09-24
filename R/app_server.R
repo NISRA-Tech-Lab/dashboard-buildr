@@ -5419,6 +5419,68 @@ app_server <- function(
       length(values)
     )
     
+    session$onFlushed(
+      function() {
+        
+        for (card_number in seq_along(values)) {
+          
+          current <- values[[card_number]]
+          
+          updateTextInput(
+            session = session,
+            inputId = paste0(
+              "page_card_",
+              card_number,
+              "_top_line"
+            ),
+            value = current$top_line
+          )
+          
+          updateTextInput(
+            session = session,
+            inputId = paste0(
+              "page_card_",
+              card_number,
+              "_unit"
+            ),
+            value = current$unit
+          )
+          
+          updateTextInput(
+            session = session,
+            inputId = paste0(
+              "page_card_",
+              card_number,
+              "_bottom_line"
+            ),
+            value = current$bottom_line
+          )
+          
+          updateSelectInput(
+            session = session,
+            inputId = paste0(
+              "page_card_",
+              card_number,
+              "_background"
+            ),
+            selected = current$background
+          )
+          
+          shinyjs::runjs(
+            sprintf(
+              "$('#page_card_%d_value').val(%s);",
+              card_number,
+              jsonlite::toJSON(
+                current$value,
+                auto_unbox = TRUE
+              )
+            )
+          )
+        }
+      },
+      once = TRUE
+    )
+    
     strapline <- tryCatch(
       read_page_strapline(
         project_root = folder(),
