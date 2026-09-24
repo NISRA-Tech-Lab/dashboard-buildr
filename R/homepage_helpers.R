@@ -2536,21 +2536,21 @@ html_fragment_to_text <- function(html) {
   
   # Use plain-text placeholders while parsing the HTML.
   html <- gsub(
-    '<span\\s+class=["\']latest-year["\']\\s*></span>',
+    '<span\\s+class=["\'][^"\']*\\blatest-year\\b[^"\']*["\']\\s*></span>',
     "___BUILDR_LATEST_YEAR___",
     html,
     perl = TRUE
   )
   
   html <- gsub(
-    '<span\\s+class=["\']last-year["\']\\s*></span>',
+    '<span\\s+class=["\'][^"\']*\\blast-year\\b[^"\']*["\']\\s*></span>',
     "___BUILDR_LAST_YEAR___",
     html,
     perl = TRUE
   )
   
   html <- gsub(
-    '<span\\s+class=["\']first-year["\']\\s*></span>',
+    '<span\\s+class=["\'][^"\']*\\bfirst-year\\b[^"\']*["\']\\s*></span>',
     "___BUILDR_FIRST_YEAR___",
     html,
     perl = TRUE
