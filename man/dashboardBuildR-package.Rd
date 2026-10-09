@@ -13,11 +13,11 @@ The main user-facing entry point is
 \code{\link[=run_dashboard_buildr]{run_dashboard_buildr()}}.
 }
 \author{
-\strong{Maintainer}: NISRA Tech Lab \email{nisra.statistics@finance-ni.gov.uk}
+\strong{Maintainer}: NISRA Tech Lab \email{techlab@nisra.gov.uk}
 
 Authors:
 \itemize{
-  \item NISRA Tech Lab \email{nisra.statistics@finance-ni.gov.uk}
+  \item NISRA Tech Lab \email{techlab@nisra.gov.uk}
 }
 
 }

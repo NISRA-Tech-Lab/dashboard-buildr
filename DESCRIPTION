@@ -1,12 +1,12 @@
 Package: dashboardBuildR
 Title: Build NISRA Data Dashboards
-Version: 0.3.4
+Version: 0.3.5
 Authors@R:
     person(
         given = "NISRA",
         family = "Tech Lab",
         role = c("aut", "cre"),
-        email = "nisra.statistics@finance-ni.gov.uk"
+        email = "techlab@nisra.gov.uk"
     )
 Description: A Shiny application for configuring and generating
     NISRA data dashboards from Data Portal tables.

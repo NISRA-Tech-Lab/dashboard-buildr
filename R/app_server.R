@@ -14014,6 +14014,25 @@ app_server <- function(
       
       tags$hr(),
       
+      h4("Label format"),
+      
+      textInput(
+        inputId = "map_unit",
+        label = "Unit",
+        value = "",
+        width = "100%"
+      ),
+      
+      numericInput(
+        inputId = "map_dp",
+        label = "Number of decimal places",
+        value = 0,
+        min = 0,
+        width = "100%"
+      ),
+      
+      tags$hr(),
+      
       h4("Additional filters"),
       
       tags$p(
@@ -14081,6 +14100,9 @@ app_server <- function(
         return()
       }
       
+      unit <- input$map_unit
+      dp <- input$map_dp
+      
       selected_filters <- list()
       
       for (
@@ -14130,6 +14152,8 @@ app_server <- function(
           area,
         value =
           value,
+        unit = unit,
+        dp = dp,
         filters =
           selected_filters
       )

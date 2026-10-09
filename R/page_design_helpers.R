@@ -9080,6 +9080,20 @@ build_page_map_chart_js <- function(
       "        value: ",
       javascript_string(
         settings$value
+      ),
+      ","
+    ),
+    paste0(
+      "        unit: ",
+      javascript_string(
+        settings$unit
+      ),
+      ","
+    ),
+    paste0(
+      "        label_dp: ",
+      javascript_string(
+        settings$dp
       )
     ),
     "    });"
