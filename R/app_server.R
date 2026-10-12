@@ -8367,6 +8367,45 @@ app_server <- function(
         )
       },
       
+      h4("Label format"),
+      
+      textInput(
+        inputId = "bar_unit",
+        label = "Unit",
+        value = "",
+        width = "100%"
+      ),
+      
+      fluidRow(
+        column(
+          width = 6,
+          
+          numericInput(
+            inputId = "bar_dp",
+            label = "Number of decimal places",
+            value = 0,
+            min = 0,
+            max = 10,
+            step = 1,
+            width = "100%"
+          )
+        ),
+        
+        column(
+          width = 6,
+          
+          tags$div(
+            style = "margin-top: 25px;",
+            
+            checkboxInput(
+              inputId = "bar_comma_separator",
+              label = "Use comma separator",
+              value = TRUE
+            )
+          )
+        )
+      ),
+      
       tags$hr(),
       
       h4("Additional filters"),
@@ -8431,6 +8470,10 @@ app_server <- function(
       
       category_values <-
         input$bar_chart_category_values
+      
+      unit <- input$bar_unit
+      dp <- input$bar_dp
+      comma_separator <- input$bar_comma_separator
       
       if (is.null(category_values)) {
         category_values <-
@@ -8665,6 +8708,9 @@ app_server <- function(
           as.character(
             bar_values
           ),
+        unit = unit,
+        dp = dp,
+        comma_separator = comma_separator,
         filters =
           selected_filters,
         label_format =

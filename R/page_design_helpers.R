@@ -5350,6 +5350,29 @@ build_page_bar_chart_js <- function(
       "        y_label: ",
       javascript_string(
         y_label
+      ),
+      ","
+    ),
+    paste0(
+      "        unit: ",
+      javascript_string(
+        settings$unit
+      ),
+      ","
+    ),
+    paste0(
+      "        comma_separator: ",
+      if (isTRUE(settings$comma_separator)) {
+        "true"
+      } else {
+        "false"
+      },
+      ","
+    ),
+    paste0(
+      "        label_dp: ",
+      javascript_string(
+        settings$dp
       )
     ),
     "    });"
