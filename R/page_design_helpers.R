@@ -6928,6 +6928,9 @@ build_page_treemap_chart_js <- function(
     chart_number,
     matrix,
     settings,
+    unit,
+    dp,
+    comma_separator,
     year_prefix = NULL
 ) {
   
@@ -7208,7 +7211,27 @@ build_page_treemap_chart_js <- function(
     paste0(
       '        expanded_canvas_id: "treemap-canvas-',
       chart_number,
-      '-expanded"'
+      '-expanded"',
+      ","
+    ),
+    paste0(
+      "        unit: ",
+      javascript_string(unit),
+      ","
+    ),
+    paste0(
+      "        label_dp: ",
+      dp,
+      ","
+    ),
+    paste0(
+      "        comma_separator: ",
+      if (isTRUE(comma_separator)) {
+        "true"
+      } else {
+        "false"
+      },
+      ","
     ),
     "    });"
   )

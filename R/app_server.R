@@ -7083,6 +7083,9 @@ app_server <- function(
                   chart_number = current_chart,
                   matrix = treemap_settings$matrix,
                   settings = treemap_settings,
+                  unit = treemap_settings$unit,
+                  dp = treemap_settings$dp,
+                  comma_separator = treemap_settings$comma_separator,
                   year_prefix = year_prefix
                 )
             }
@@ -11734,6 +11737,35 @@ app_server <- function(
     existing_settings <-
       modal_data$existing_settings
     
+    existing_unit <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$unit)
+    ) {
+      existing_settings$unit
+    } else {
+      ""
+    }
+    
+    existing_dp <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$dp)
+    ) {
+      existing_settings$dp
+    } else {
+      0
+    }
+    
+    existing_comma_separator <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$comma_separator)
+    ) {
+      isTRUE(
+        existing_settings$comma_separator
+      )
+    } else {
+      TRUE
+    }
+    
     row_filters <-
       calculation_data$row_filters
     
@@ -12026,6 +12058,47 @@ app_server <- function(
       
       tags$hr(),
       
+      h4("Label format"),
+      
+      textInput(
+        inputId = "tree_unit",
+        label = "Unit",
+        value = existing_unit,
+        width = "100%"
+      ),
+      
+      fluidRow(
+        column(
+          width = 6,
+          
+          numericInput(
+            inputId = "tree_dp",
+            label = "Number of decimal places",
+            value = existing_dp,
+            min = 0,
+            max = 10,
+            step = 1,
+            width = "100%"
+          )
+        ),
+        
+        column(
+          width = 6,
+          
+          tags$div(
+            style = "margin-top: 25px;",
+            
+            checkboxInput(
+              inputId = "tree_comma_separator",
+              label = "Use comma separator",
+              value = existing_comma_separator
+            )
+          )
+        )
+      ),
+      
+      tags$hr(),
+      
       h4("Additional filters"),
       
       tags$p(
@@ -12059,8 +12132,6 @@ app_server <- function(
       }
     )
   })
-  
-  ### Finish treemap configuration ####
   
   ### Finish treemap configuration ####
   
@@ -12283,6 +12354,12 @@ app_server <- function(
         }
       }
       
+      tree_unit <- input$tree_unit
+      
+      tree_dp <- input$tree_dp
+      
+      tree_comma_separator <- input$tree_comma_separator
+      
       page_treemap_chart_settings[[
         as.character(
           chart_number
@@ -12309,7 +12386,17 @@ app_server <- function(
           value,
         
         filters =
-          selected_filters
+          selected_filters,
+        
+        unit = 
+          tree_unit,
+        
+        dp =
+          tree_dp,
+        
+        comma_separator =
+          tree_comma_separator
+        
       )
       
       summary_text <- if (
