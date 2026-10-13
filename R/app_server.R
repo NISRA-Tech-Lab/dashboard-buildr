@@ -6757,6 +6757,22 @@ app_server <- function(
                 unit <- ""
               }
               
+              dp <- input[[
+                paste0(
+                  "page_chart_",
+                  current_chart,
+                  "_dp"
+                )
+              ]]
+              
+              comma_separator <- input[[
+                paste0(
+                  "page_chart_",
+                  current_chart,
+                  "_comma_separator"
+                )
+              ]]
+              
               show_points <- input[[
                 paste0(
                   "page_chart_",
@@ -6803,6 +6819,8 @@ app_server <- function(
                 recent_years = recent_years,
                 lines = line_settings$lines,
                 unit = unit,
+                dp = dp,
+                comma_separator = comma_separator,
                 show_points = show_points,
                 year_prefix = year_prefix
               )
@@ -8890,6 +8908,22 @@ app_server <- function(
         return()
       }
       
+      dp <- input[[
+        paste0(
+          "page_chart_",
+          chart_number,
+          "_dp"
+        )
+      ]]
+      
+      comma_separator <- input[[
+        paste0(
+          "page_chart_",
+          chart_number,
+          "_comma_separator"
+        )
+      ]]
+      
       year_mode <- input[[
         paste0(
           "page_chart_",
@@ -9262,6 +9296,63 @@ app_server <- function(
                     ""
                   },
                   width = "220px"
+                ),
+                
+                tags$hr(),
+                
+                
+                h4("Label format"),
+                
+                fluidRow(
+                  column(
+                    width = 6,
+                    
+                    numericInput(
+                      inputId = paste0(
+                        "page_chart_",
+                        current_chart,
+                        "_dp"
+                      ),
+                      label = "Number of decimal places",
+                      value = if (
+                        !is.null(existing_settings) &&
+                        !is.null(existing_settings$dp)
+                      ) {
+                        existing_settings$dp
+                      } else {
+                        0
+                      },
+                      min = 0,
+                      max = 10,
+                      step = 1,
+                      width = "100%"
+                    )
+                  ),
+                  
+                  column(
+                    width = 6,
+                    
+                    tags$div(
+                      style = "margin-top: 25px;",
+                      
+                      checkboxInput(
+                        inputId = paste0(
+                          "page_chart_",
+                          current_chart,
+                          "_comma_separator"
+                        ),
+                        label = "Use comma separator",
+                        value = if (
+                          !is.null(existing_settings) &&
+                          !is.null(existing_settings$comma_separator)
+                        ) {
+                          isTRUE(existing_settings$comma_separator)
+                        } else {
+                          TRUE
+                        }
+                      )
+                    )
+                  )
                 ),
                 
                 checkboxInput(

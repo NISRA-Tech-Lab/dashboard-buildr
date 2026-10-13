@@ -4309,6 +4309,8 @@ build_page_line_chart_js <- function(
     recent_years,
     lines,
     unit,
+    dp,
+    comma_separator,
     show_points,
     year_prefix = NULL
 ) {
@@ -4538,7 +4540,21 @@ build_page_line_chart_js <- function(
     ),
     paste0(
       "        showPoints: ",
-      show_points_js
+      show_points_js,
+      ","
+    ),
+    paste0(
+      "        label_dp: ",
+      dp,
+      ","
+    ),
+    paste0(
+      "        comma_separator: ",
+      if (isTRUE(comma_separator)) {
+        "true"
+      } else {
+        "false"
+      }
     ),
     "    });"
   )
