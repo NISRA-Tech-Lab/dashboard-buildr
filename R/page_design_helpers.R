@@ -5837,6 +5837,9 @@ build_page_pie_chart_js <- function(
     chart_number,
     matrix,
     settings,
+    unit,
+    dp,
+    comma_separator,
     year_prefix = NULL
 ) {
   
@@ -6108,6 +6111,25 @@ build_page_pie_chart_js <- function(
       '        expanded_canvas_id: "pie-canvas-',
       chart_number,
       '-expanded",'
+    ),
+    paste0(
+      "        unit: ",
+      javascript_string(unit),
+      ","
+    ),
+    paste0(
+      "        label_dp: ",
+      dp,
+      ","
+    ),
+    paste0(
+      "        comma_separator: ",
+      if (isTRUE(comma_separator)) {
+        "true"
+      } else {
+        "false"
+      },
+      ","
     ),
     paste0(
       "        type: ",

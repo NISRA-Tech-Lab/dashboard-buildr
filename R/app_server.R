@@ -7018,6 +7018,9 @@ app_server <- function(
                 chart_number = current_chart,
                 matrix = pie_settings$matrix,
                 settings = pie_settings,
+                unit = pie_settings$unit,
+                dp = pie_settings$dp,
+                comma_separator = pie_settings$comma_separator,
                 year_prefix = year_prefix
               )
             }
@@ -10503,6 +10506,35 @@ app_server <- function(
     existing_settings <-
       modal_data$existing_settings
     
+    existing_unit <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$unit)
+    ) {
+      existing_settings$unit
+    } else {
+      ""
+    }
+    
+    existing_dp <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$dp)
+    ) {
+      existing_settings$dp
+    } else {
+      0
+    }
+    
+    existing_comma_separator <- if (
+      !is.null(existing_settings) &&
+      !is.null(existing_settings$comma_separator)
+    ) {
+      isTRUE(
+        existing_settings$comma_separator
+      )
+    } else {
+      TRUE
+    }
+    
     existing_values <- if (
       !is.null(existing_settings) &&
       !is.null(existing_settings$values)
@@ -10574,7 +10606,46 @@ app_server <- function(
       
       uiOutput(
         "pie_chart_filters_ui"
-      )
+      ),
+      
+      h4("Label format"),
+      
+      textInput(
+        inputId = "pie_unit",
+        label = "Unit",
+        value = existing_unit,
+        width = "100%"
+      ),
+      
+      fluidRow(
+        column(
+          width = 6,
+          
+          numericInput(
+            inputId = "pie_dp",
+            label = "Number of decimal places",
+            value = existing_dp,
+            min = 0,
+            max = 10,
+            step = 1,
+            width = "100%"
+          )
+        ),
+        
+        column(
+          width = 6,
+          
+          tags$div(
+            style = "margin-top: 25px;",
+            
+            checkboxInput(
+              inputId = "pie_comma_separator",
+              label = "Use comma separator",
+              value = TRUE
+            )
+          )
+        )
+      ),
     )
   })
   
@@ -11275,6 +11346,12 @@ app_server <- function(
         )
       ]]
       
+      pie_unit <- input$pie_unit
+      
+      pie_dp <- input$pie_dp
+      
+      pie_comma_separator <- input$pie_comma_separator
+      
       if (
         is.null(pie_type) ||
         !pie_type %in% c(
@@ -11314,7 +11391,16 @@ app_server <- function(
           selected_filters,
         
         type =
-          pie_type
+          pie_type,
+        
+        unit = 
+          pie_unit,
+        
+        dp =
+          pie_dp,
+        
+        comma_separator =
+          pie_comma_separator
       )
       
       summary_text <- paste0(
