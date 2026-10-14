@@ -7739,19 +7739,22 @@ build_page_pyramid_chart_js <- function(
   }
   
   #
-  # Optional category restrictions.
+  # Optionally exclude the category total.
   #
   if (
-    !is.null(settings$category_values) &&
-    length(settings$category_values) > 0
+    !is.null(settings$total_value) &&
+    length(settings$total_value) == 1 &&
+    !is.na(settings$total_value) &&
+    nzchar(settings$total_value)
   ) {
     
     filter_conditions <- c(
       filter_conditions,
-      build_chart_filter_condition(
-        column_name = settings$categories,
-        selected_values = settings$category_values,
-        year_prefix = year_prefix
+      paste0(
+        "row[",
+        javascript_string(settings$categories),
+        "] != ",
+        javascript_string(settings$total_value)
       )
     )
   }

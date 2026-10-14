@@ -12793,13 +12793,14 @@ app_server <- function(
       character()
     }
     
-    existing_category_values <- if (
+    existing_total_value <- if (
       !is.null(existing_settings) &&
-      !is.null(existing_settings$category_values)
+      !is.null(existing_settings$total_value) &&
+      existing_settings$total_value %in% unname(category_value_choices)
     ) {
-      existing_settings$category_values
+      existing_settings$total_value
     } else {
-      character()
+      ""
     }
     
     #
@@ -12929,24 +12930,14 @@ app_server <- function(
       
       if (nzchar(selected_category)) {
         
-        selectizeInput(
-          inputId =
-            "pyramid_chart_category_values",
-          label = paste0(
-            selected_category,
-            " values"
+        selectInput(
+          inputId = "pyramid_chart_total_value",
+          label = "Total value (if any)",
+          choices = c(
+            "None" = "",
+            category_value_choices
           ),
-          choices =
-            category_value_choices,
-          selected =
-            existing_category_values,
-          multiple = TRUE,
-          options = list(
-            plugins = list(
-              "remove_button"
-            ),
-            placeholder = "All values"
-          ),
+          selected = existing_total_value,
           width = "100%"
         )
       },
@@ -13090,12 +13081,10 @@ app_server <- function(
         return()
       }
       
-      category_values <-
-        input$pyramid_chart_category_values
+      total_value <- input$pyramid_chart_total_value
       
-      if (is.null(category_values)) {
-        category_values <-
-          character()
+      if (is.null(total_value)) {
+        total_value <- ""
       }
       
       #
@@ -13175,9 +13164,9 @@ app_server <- function(
           year_column,
         categories =
           categories,
-        category_values =
+        total_value =
           as.character(
-            category_values
+            total_value
           ),
         values = c(
           left_value,
