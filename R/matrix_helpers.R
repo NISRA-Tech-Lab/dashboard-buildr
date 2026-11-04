@@ -1,4 +1,4 @@
-verify_matrix <- function(matrix_name) {
+verify_matrix <- function(matrix_name, portal) {
   
   matrix_name <- toupper(trimws(matrix_name))
   
@@ -12,8 +12,16 @@ verify_matrix <- function(matrix_name) {
     )
   }
   
+  url_prefix <- if (portal == "pp") {
+    "pp"
+  } else {
+    ""
+  }
+  
   url <- paste0(
-    "https://ws-data.nisra.gov.uk/public/api.restful/",
+    "https://",
+    url_prefix,
+    "ws-data.nisra.gov.uk/public/api.restful/",
     "PxStat.Data.Cube_API.ReadDataset/",
     utils::URLencode(matrix_name, reserved = TRUE),
     "/JSON-stat/2.0/en"

@@ -711,7 +711,7 @@ app_server <- function(
     setting_names <- c(
       "Dashboard Title",
       "Pages",
-      "portal_url",
+      "Portal",
       "Department",
       "Import data",
       "RateIt link"
@@ -881,8 +881,7 @@ app_server <- function(
       Content = content,
       check.names = FALSE,
       stringsAsFactors = FALSE
-    ) |>
-      dplyr::filter(.data$Setting != "portal_url")
+    )
     
     result$Edit <- vapply(
       seq_len(nrow(result)),
@@ -1037,7 +1036,7 @@ app_server <- function(
   
   ## Edit the RateIt link ####
   observeEvent(input$edit_setting, {
-    req(input$edit_setting == 5)
+    req(input$edit_setting == 6)
     
     config <- config_file()
     
@@ -1993,7 +1992,7 @@ app_server <- function(
   
   #### Add the deparment edit modal ####
   observeEvent(input$edit_setting, {
-    req(input$edit_setting == 3)
+    req(input$edit_setting == 4)
     
     config <- config_file()
     departments <- departments_file()
@@ -2162,6 +2161,179 @@ app_server <- function(
     )
   })
   
+  ### Edit portal ####
+  
+  
+  #### Add the portal edit modal ####
+  observeEvent(input$edit_setting, {
+    req(input$edit_setting == 3)
+    
+    config <- config_file()
+    portals <- list(
+      "data" = list(name = "NISRA Data Portal (public)"),
+      "pp" = list(name = "NISRA Pre-production Portal (internal)")
+    )
+    
+    portal_keys <- names(portals)
+    
+    current_portal <- config$portal
+    
+    if (
+      is.null(current_portal) ||
+      !current_portal %in% portal_keys
+    ) {
+      current_portal <- "data"
+    }
+    
+    portal_labels <- vapply(
+      portal_keys,
+      function(key) {
+        portal_name <- portals[[key]]$name
+        
+        if (
+          is.null(portal_name) ||
+          !nzchar(portal_name)
+        ) {
+          return(key)
+        }
+        
+        paste0(
+          key,
+          " - ",
+          portal_name
+        )
+      },
+      character(1)
+    )
+    
+    portal_choices <- stats::setNames(
+      portal_keys,
+      portal_labels
+    )
+    
+    showModal(
+      modalDialog(
+        title = "Edit portal",
+        
+        selectInput(
+          inputId = "new_portal",
+          label = "Portal",
+          choices = portal_choices,
+          selected = current_portal,
+          width = "100%"
+        ),
+        
+        footer = tagList(
+          modalButton("Cancel"),
+          actionButton(
+            inputId = "save_portal",
+            label = "Save",
+            class = "btn-primary"
+          )
+        ),
+        
+        easyClose = FALSE
+      )
+    )
+  })
+  
+  #### Save selected portal ####
+  observeEvent(input$save_portal, {
+    req(folder())
+    req(input$new_portal)
+    
+    new_portal <- input$new_portal
+    portals <- list(
+      "data" = list(name = "NISRA Data Portal (public)"),
+      "pp" = list(name = "NISRA Pre-production Portal (internal)")
+    )
+    
+    valid_portals <- names(portals)
+    
+    if (!new_portal %in% valid_portals) {
+      showNotification(
+        "The selected portal is not valid.",
+        type = "error"
+      )
+      return()
+    }
+    
+    config_path <- file.path(
+      folder(),
+      "src",
+      "config",
+      "config.js"
+    )
+    
+    if (!file.exists(config_path)) {
+      showNotification(
+        "No config.js file was found.",
+        type = "error"
+      )
+      return()
+    }
+    
+    config_lines <- readLines(
+      config_path,
+      warn = FALSE,
+      encoding = "UTF-8"
+    )
+    
+    portal_line <- grep(
+      '^\\s*["\']portal["\']\\s*:',
+      config_lines
+    )
+    
+    if (length(portal_line) != 1) {
+      showNotification(
+        'Could not uniquely identify the "portal" property.',
+        type = "error",
+        duration = NULL
+      )
+      return()
+    }
+    
+    existing_indent <- sub(
+      '^(\\s*).*',
+      '\\1',
+      config_lines[portal_line]
+    )
+    
+    has_comma <- grepl(
+      ',\\s*$',
+      config_lines[portal_line]
+    )
+    
+    config_lines[portal_line] <- paste0(
+      existing_indent,
+      '"portal": "',
+      new_portal,
+      '"',
+      if (has_comma) "," else ""
+    )
+    
+    writeLines(
+      config_lines,
+      config_path,
+      useBytes = TRUE
+    )
+    
+    config_version(
+      config_version() + 1
+    )
+    
+    removeModal()
+    
+    showNotification(
+      paste0(
+        "Portal updated to ",
+        new_portal,
+        "."
+      ),
+      type = "message"
+    )
+  })
+  
   ### Display Data Portal Tables modal ####
   
   matrix_draft <- reactiveVal(character())
@@ -2184,6 +2356,13 @@ app_server <- function(
             target = "_blank",
             rel = "noopener noreferrer",
             "Browse the NISRA Data Portal"
+          ),
+          " or ",
+          tags$a(
+            href = "https://ppdata.nisra.gov.uk/",
+            target = "_blank",
+            rel = "noopener noreferrer",
+            "Browse the NISRA Pre-Production Data Portal"
           ),
           "."
         ),
@@ -2779,7 +2958,7 @@ app_server <- function(
   )
   
   observeEvent(input$edit_setting, {
-    req(input$edit_setting == 4)
+    req(input$edit_setting == 5)
     
     config <- config_file()
     
@@ -3253,7 +3432,9 @@ app_server <- function(
       closeButton = FALSE
     )
     
-    verification <- verify_matrix(matrix_name)
+    config <- config_file()
+    current_portal <- config$portal
+    verification <- verify_matrix(matrix_name, current_portal)
     
     removeNotification(notification_id)
     
