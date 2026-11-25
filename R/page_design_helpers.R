@@ -8379,7 +8379,28 @@ build_page_table_js <- function(
           "            format: ",
           javascript_string(
             column_settings$format
-          )
+          ),
+          ","
+        ),
+        paste0(
+          "            unit: ",
+          javascript_string(
+            column_settings$unit %||% ""
+          ),
+          ","
+        ),
+        paste0(
+          "            dp: ",
+          column_settings$dp %||% 0,
+          ","
+        ),
+        paste0(
+          "            comma_separator: ",
+          if (isTRUE(column_settings$comma_separator)) {
+            "true"
+          } else {
+            "false"
+          }
         ),
         "        }"
       )

@@ -13481,7 +13481,10 @@ app_server <- function(
                 list(
                   heading = "",
                   source = "",
-                  format = "string"
+                  format = "string",
+                  unit = "",
+                  dp = 0,
+                  comma_separator = TRUE
                 )
               )
             }
@@ -13704,6 +13707,61 @@ app_server <- function(
               width = "100%"
             ),
             
+            conditionalPanel(
+              condition = sprintf(
+                "input.table_chart_column_%d_format == 'number'",
+                column_number
+              ),
+              
+              tags$hr(),
+              
+              textInput(
+                inputId = paste0(
+                  "table_chart_column_",
+                  column_number,
+                  "_unit"
+                ),
+                label = "Unit",
+                value =
+                  column_settings$unit %||% "",
+                width = "100%"
+              ),
+              
+              numericInput(
+                inputId = paste0(
+                  "table_chart_column_",
+                  column_number,
+                  "_dp"
+                ),
+                label = "Decimal places",
+                value =
+                  column_settings$dp %||% 0,
+                min = 0,
+                width = "100%"
+              ),
+              
+              checkboxInput(
+                inputId = paste0(
+                  "table_chart_column_",
+                  column_number,
+                  "_comma_separator"
+                ),
+                label = "Use comma separator",
+                value = if (
+                  is.null(
+                    column_settings$comma_separator
+                  )
+                ) {
+                  TRUE
+                } else {
+                  isTRUE(
+                    column_settings$comma_separator
+                  )
+                }
+              )
+            ),
+            
+            
             if (length(columns) > 1) {
               actionButton(
                 inputId = paste0(
@@ -13788,9 +13846,7 @@ app_server <- function(
         seq_along(columns)
       ) {
         
-        columns[[
-          column_number
-        ]] <- list(
+        columns[[column_number]] <- list(
           heading = input[[
             paste0(
               "table_chart_column_",
@@ -13813,7 +13869,33 @@ app_server <- function(
               column_number,
               "_format"
             )
-          ]] %||% "string"
+          ]] %||% "string",
+          
+          unit = input[[
+            paste0(
+              "table_chart_column_",
+              column_number,
+              "_unit"
+            )
+          ]] %||% "",
+          
+          dp = input[[
+            paste0(
+              "table_chart_column_",
+              column_number,
+              "_dp"
+            )
+          ]] %||% 0,
+          
+          comma_separator = isTRUE(
+            input[[
+              paste0(
+                "table_chart_column_",
+                column_number,
+                "_comma_separator"
+              )
+            ]]
+          )
         )
       }
       
@@ -13822,7 +13904,10 @@ app_server <- function(
       ]] <- list(
         heading = "",
         source = "",
-        format = "string"
+        format = "string",
+        unit = "",
+        dp = 0,
+        comma_separator = TRUE
       )
       
       table_modal_columns(
@@ -13894,7 +13979,33 @@ app_server <- function(
                     i,
                     "_format"
                   )
-                ]] %||% "string"
+                ]] %||% "string",
+                
+                unit = input[[
+                  paste0(
+                    "table_chart_column_",
+                    i,
+                    "_unit"
+                  )
+                ]] %||% "",
+                
+                dp = input[[
+                  paste0(
+                    "table_chart_column_",
+                    i,
+                    "_dp"
+                  )
+                ]] %||% 0,
+                
+                comma_separator = isTRUE(
+                  input[[
+                    paste0(
+                      "table_chart_column_",
+                      i,
+                      "_comma_separator"
+                    )
+                  ]]
+                )
               )
             }
             
@@ -13972,6 +14083,30 @@ app_server <- function(
           )
         ]]
         
+        unit <- input[[
+          paste0(
+            "table_chart_column_",
+            column_number,
+            "_unit"
+          )
+        ]]
+        
+        dp <- input[[
+          paste0(
+            "table_chart_column_",
+            column_number,
+            "_dp"
+          )
+        ]]
+        
+        comma_separator <- input[[
+          paste0(
+            "table_chart_column_",
+            column_number,
+            "_comma_separator"
+          )
+        ]]
+        
         if (
           is.null(heading) ||
           !nzchar(trimws(heading))
@@ -14014,15 +14149,21 @@ app_server <- function(
           format <- "string"
         }
         
-        configured_columns[[
-          column_number
-        ]] <- list(
+        configured_columns[[column_number]] <- list(
           heading =
             trimws(heading),
           source =
             source,
           format =
-            format
+            format,
+          unit =
+            unit %||% "",
+          dp =
+            dp %||% 0,
+          comma_separator =
+            isTRUE(
+              comma_separator
+            )
         )
       }
       
